@@ -77,12 +77,54 @@ ARTIFACTS="${ARTIFACTS:-$( mktemp -d )}/upgrade-operator"
 mkdir -p "${ARTIFACTS}"
 export ARTIFACTS
 
-# Versions to upgrade between; env-overridable (e.g. parsed from the triggering CI comment), defaulting from the
-# config assets like run-e2e in hack/.ci/lib/e2e.sh. Each accepts a released version, a full image ref, "latest"
-# (build the current tree) or "<major.minor>-latest" (e.g. "1.21-latest": build the tip of the corresponding
-# release branch, v1.21); the "-latest" forms are kind-runner-only, as they require building an image.
-OPERATOR_UPGRADE_FROM_VERSION="${OPERATOR_UPGRADE_FROM_VERSION:-$( yq '.operatorTests.operatorVersions.upgradeFrom' "${repo_root}/assets/config/config.yaml" )}"
-OPERATOR_UPGRADE_TO_VERSION="${OPERATOR_UPGRADE_TO_VERSION:-latest}"
+# Versions to upgrade between; env-overridable, defaulting branch-relative via the functions below. Each accepts
+# a released version, a full image ref, "latest" (build the current tree) or "<major.minor>-latest" (e.g.
+# "1.21-latest": build the tip of the corresponding release branch, v1.21); the "-latest" forms are
+# kind-runner-only, as they require building an image. The branch comes from the CI event context - checkouts
+# in CI are detached HEADs, often shallow, so git can't tell.
+
+# get-upgrade-from-version prints the highest stable released version (without the leading "v") - among the
+# minors strictly below X.Y (the previous minor's latest patch) when the given branch is a release branch
+# "vX.Y", overall otherwise (master, feature branches).
+function get-upgrade-from-version {
+  local branch="${1-}"
+  local tags
+
+  # Prefer local tags (present with full checkouts); fall back to the canonical repository for shallow
+  # clones and forks without the release tags.
+  tags="$( git -C "${repo_root}" tag --list | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true )"
+  if [ -z "${tags}" ]; then
+    tags="$( git ls-remote --tags --refs https://github.com/scylladb/scylla-operator.git | sed -e 's|.*refs/tags/||' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' )"
+  fi
+
+  if [[ "${branch}" =~ ^v([0-9]+)\.([0-9]+)$ ]]; then
+    tags="$( awk -F '[v.]' -v major="${BASH_REMATCH[1]}" -v minor="${BASH_REMATCH[2]}" '$2+0 < major+0 || ($2+0 == major+0 && $3+0 < minor+0)' <<< "${tags}" )"
+  fi
+
+  if [ -z "${tags}" ]; then
+    echo "Can't determine the released version to upgrade from: no release tag matching branch \"${branch}\"" >&2
+    return 1
+  fi
+
+  sort -V <<< "${tags}" | tail -n 1 | sed -e 's/^v//'
+}
+
+# get-upgrade-to-version prints the checked-out tree ("latest") on pull requests (the PR is what's under test;
+# GITHUB_BASE_REF is only set there), the release-branch tip ("X.Y-latest", what a release would promote) when
+# the given branch is a release branch, the checked-out tree otherwise.
+function get-upgrade-to-version {
+  local branch="${1-}"
+
+  if [ -z "${GITHUB_BASE_REF:-}" ] && [[ "${branch}" =~ ^v([0-9]+\.[0-9]+)$ ]]; then
+    echo "${BASH_REMATCH[1]}-latest"
+  else
+    echo "latest"
+  fi
+}
+
+current_branch="${GITHUB_BASE_REF:-${GITHUB_REF_NAME:-$( git -C "${repo_root}" rev-parse --abbrev-ref HEAD )}}"
+OPERATOR_UPGRADE_FROM_VERSION="${OPERATOR_UPGRADE_FROM_VERSION:-$( get-upgrade-from-version "${current_branch}" )}"
+OPERATOR_UPGRADE_TO_VERSION="${OPERATOR_UPGRADE_TO_VERSION:-$( get-upgrade-to-version "${current_branch}" )}"
 
 # resolve-operator-version resolves the "latest"/"<major.minor>-latest" forms in the version variable named by $1:
 # it builds the image from the corresponding tree (the current one, or a temporary release branch worktree) and
