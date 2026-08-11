@@ -1,0 +1,45 @@
+name: "E2E: KinD (operator upgrade)"
+
+on:
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'enhancements/**'
+      - '**.md'
+      - 'renovate.json'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-kind-operator-upgrade:
+    name: Upgrade the operator on KinD
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    env:
+      # Outside the workspace, so checkout cleaning can't touch it.
+      ARTIFACTS: ${{ github.workspace }}/../artifacts
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          # Full history and tags - the runner script infers the version to upgrade from off the release tags.
+          fetch-depth: 0
+
+      - name: Run the operator upgrade test
+        run: make test-e2e-kind-operator-upgrade
+
+      - name: Upload artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-kind-operator-upgrade-artifacts
+          path: ${{ env.ARTIFACTS }}
+          if-no-files-found: ignore
