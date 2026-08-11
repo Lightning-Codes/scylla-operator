@@ -38,6 +38,10 @@ var _ = g.Describe("Operator Upgrade", framework.SuiteOperatorUpgrade, func() {
 	})
 
 	g.It("should upgrade the operator between the configured versions", g.SpecTimeout(testTimeout), func(ctx g.SpecContext) {
+		// The versions have no default - the caller (hack/kind/run-e2e-operator-upgrade.sh in CI) computes them.
+		o.Expect(framework.TestContext.OperatorUpgradeFrom).NotTo(o.BeEmpty(), "--operator-upgrade-from-version must be set for the operator upgrade suite")
+		o.Expect(framework.TestContext.OperatorUpgradeTo).NotTo(o.BeEmpty(), "--operator-upgrade-to-version must be set for the operator upgrade suite")
+
 		// The upgrade endpoints are independent: each is either a released version (resolved against the released
 		// operator repository) or a full image ref (e.g. a locally built image pushed to the kind registry), so the
 		// test covers released -> current checkout as well as released -> released upgrades.
