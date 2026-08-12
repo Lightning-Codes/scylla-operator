@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
@@ -133,6 +134,8 @@ func Test_makeRequiredScyllaDBManagerCluster(t *testing.T) {
 		AlternatorAccessKeyID:     "alternator-key",
 		AlternatorSecretAccessKey: "alternator-secret",
 		CQLCA:                     []byte("cql-ca"),
+		CQLClientCertificate:      []byte("cql-client-cert"),
+		CQLClientPrivateKey:       []byte("cql-client-key"),
 		AlternatorCA:              []byte("alternator-ca"),
 		AgentCA:                   []byte("agent-ca"),
 		Revision:                  "non-secret-revision",
@@ -147,6 +150,8 @@ func Test_makeRequiredScyllaDBManagerCluster(t *testing.T) {
 		AlternatorSecretAccessKey: "alternator-secret",
 		CQLCAFile:                 []byte("cql-ca"),
 		CQLServerName:             "db.svc",
+		SSLUserCertFile:           []byte("cql-client-cert"),
+		SSLUserKeyFile:            []byte("cql-client-key"),
 		AlternatorCAFile:          []byte("alternator-ca"),
 		AlternatorServerName:      "alternator.svc",
 		AgentCAFile:               []byte("agent-ca"),
@@ -207,7 +212,7 @@ func TestRegistrationConnectionTargetScyllaCluster(t *testing.T) {
 func TestResolveRegistrationConnectionRotationAndNonSecretRevision(t *testing.T) {
 	t.Parallel()
 
-	newController := func(password, passwordResourceVersion string) *Controller {
+	newController := func(password, passwordResourceVersion, databaseClientResourceVersion string) *Controller {
 		secretIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
 		configMapIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
 		for _, secret := range []*corev1.Secret{
@@ -228,6 +233,13 @@ func TestResolveRegistrationConnectionRotationAndNonSecretRevision(t *testing.T)
 				Data: map[string][]byte{
 					"username": []byte("cql-user"),
 					"password": []byte(password),
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{Name: "database-client-tls", Namespace: "sophena", ResourceVersion: databaseClientResourceVersion},
+				Data: map[string][]byte{
+					corev1.TLSCertKey:       []byte("database-client-cert"),
+					corev1.TLSPrivateKeyKey: []byte("database-client-key"),
 				},
 			},
 		} {
@@ -271,6 +283,10 @@ func TestResolveRegistrationConnectionRotationAndNonSecretRevision(t *testing.T)
 				CQL: &scyllav1alpha1.ScyllaDBManagerClusterRegistrationTLSConfig{
 					CAConfigMapKeyRef: &corev1.ConfigMapKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "database-ca"}, Key: "ca-bundle.crt"},
 					ServerName:        "scylladb-client.sophena.svc",
+					ClientCertificate: &scyllav1alpha1.ScyllaDBManagerClusterRegistrationTLSClientCertificate{
+						CertificateSecretKeyRef: corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "database-client-tls"}, Key: corev1.TLSCertKey},
+						PrivateKeySecretKeyRef:  corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "database-client-tls"}, Key: corev1.TLSPrivateKeyKey},
+					},
 				},
 				Agent: &scyllav1alpha1.ScyllaDBManagerClusterRegistrationTLSConfig{
 					CAConfigMapKeyRef: &corev1.ConfigMapKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "database-ca"}, Key: "ca-bundle.crt"},
@@ -280,18 +296,18 @@ func TestResolveRegistrationConnectionRotationAndNonSecretRevision(t *testing.T)
 		},
 	}
 
-	first, err := newController("first-password", "auth-rv-1").resolveRegistrationConnection(smcr, "scylladb-client.sophena.svc", "scylladb-auth-token")
+	first, err := newController("first-password", "auth-rv-1", "database-client-rv-1").resolveRegistrationConnection(smcr, "scylladb-client.sophena.svc", "scylladb-auth-token")
 	if err != nil {
 		t.Fatalf("can't resolve registration: %v", err)
 	}
-	if first.Password != "first-password" || string(first.CQLCA) != "database-ca" || string(first.AgentCA) != "database-ca" {
+	if first.Password != "first-password" || string(first.CQLCA) != "database-ca" || string(first.CQLClientCertificate) != "database-client-cert" || string(first.CQLClientPrivateKey) != "database-client-key" || string(first.AgentCA) != "database-ca" {
 		t.Fatalf("unexpected resolved connection: %#v", first)
 	}
 	if strings.Contains(first.Revision, "first-password") || strings.Contains(first.Revision, "agent-token") {
 		t.Fatal("non-secret revision contains secret material")
 	}
 
-	sameRevision, err := newController("different-bytes", "auth-rv-1").resolveRegistrationConnection(smcr, "scylladb-client.sophena.svc", "scylladb-auth-token")
+	sameRevision, err := newController("different-bytes", "auth-rv-1", "database-client-rv-1").resolveRegistrationConnection(smcr, "scylladb-client.sophena.svc", "scylladb-auth-token")
 	if err != nil {
 		t.Fatalf("can't resolve registration with changed bytes: %v", err)
 	}
@@ -299,12 +315,20 @@ func TestResolveRegistrationConnectionRotationAndNonSecretRevision(t *testing.T)
 		t.Fatal("revision must not hash secret bytes")
 	}
 
-	rotated, err := newController("different-bytes", "auth-rv-2").resolveRegistrationConnection(smcr, "scylladb-client.sophena.svc", "scylladb-auth-token")
+	rotated, err := newController("different-bytes", "auth-rv-2", "database-client-rv-1").resolveRegistrationConnection(smcr, "scylladb-client.sophena.svc", "scylladb-auth-token")
 	if err != nil {
 		t.Fatalf("can't resolve registration after rotation: %v", err)
 	}
 	if first.Revision == rotated.Revision {
 		t.Fatal("Secret resourceVersion rotation must change the connection revision")
+	}
+
+	rotatedClientCertificate, err := newController("first-password", "auth-rv-1", "database-client-rv-2").resolveRegistrationConnection(smcr, "scylladb-client.sophena.svc", "scylladb-auth-token")
+	if err != nil {
+		t.Fatalf("can't resolve registration after CQL client certificate rotation: %v", err)
+	}
+	if first.Revision == rotatedClientCertificate.Revision {
+		t.Fatal("CQL client certificate Secret resourceVersion rotation must change the connection revision")
 	}
 }
 
@@ -327,5 +351,45 @@ func TestDatabaseConnectionVerifiedRequiresAgentTLS(t *testing.T) {
 	condition = apimeta.FindStatusCondition(status.Conditions, scyllav1alpha1.ScyllaDBManagerClusterRegistrationDatabaseConnectionVerifiedCondition)
 	if condition == nil || condition.Status != metav1.ConditionTrue || condition.ObservedGeneration != smcr.Generation {
 		t.Fatalf("expected current DatabaseConnectionVerified=True after full verification, got %#v", condition)
+	}
+}
+
+func TestHealthyVerificationPollPreservesConditionTransitionTimes(t *testing.T) {
+	t.Parallel()
+
+	transitionTime := metav1.NewTime(time.Unix(123, 0))
+	smcr := &scyllav1alpha1.ScyllaDBManagerClusterRegistration{ObjectMeta: metav1.ObjectMeta{Generation: 7}}
+	status := &scyllav1alpha1.ScyllaDBManagerClusterRegistrationStatus{
+		Conditions: []metav1.Condition{
+			{
+				Type:               scyllav1alpha1.ScyllaDBManagerClusterRegistrationManagerAPIConnectionVerifiedCondition,
+				Status:             metav1.ConditionTrue,
+				ObservedGeneration: smcr.Generation,
+				Reason:             "VerifiedManagerAPIConnection",
+				LastTransitionTime: transitionTime,
+			},
+			{
+				Type:               scyllav1alpha1.ScyllaDBManagerClusterRegistrationDatabaseConnectionVerifiedCondition,
+				Status:             metav1.ConditionTrue,
+				ObservedGeneration: smcr.Generation,
+				Reason:             "VerifiedDatabaseConnection",
+				LastTransitionTime: transitionTime,
+			},
+		},
+	}
+
+	setManagerAPIConnectionVerified(status, smcr, metav1.ConditionTrue, "VerifiedManagerAPIConnection", "Connected to ScyllaDB Manager using verified mutual TLS.")
+	setDatabaseConnectionVerificationFromManager(status, smcr, []*managerclientsecure.ClusterStatusItem{
+		{CQLTLSVerified: true, CQLAuthVerified: true, AgentTLSVerified: true},
+	})
+
+	for _, conditionType := range []string{
+		scyllav1alpha1.ScyllaDBManagerClusterRegistrationManagerAPIConnectionVerifiedCondition,
+		scyllav1alpha1.ScyllaDBManagerClusterRegistrationDatabaseConnectionVerifiedCondition,
+	} {
+		condition := apimeta.FindStatusCondition(status.Conditions, conditionType)
+		if condition == nil || !condition.LastTransitionTime.Equal(&transitionTime) {
+			t.Fatalf("healthy poll reset %s transition time: %#v", conditionType, condition)
+		}
 	}
 }

@@ -44,6 +44,8 @@ func TestCreateClusterSecureFields(t *testing.T) {
 		AlternatorSecretAccessKey: "alternator-secret",
 		CQLCAFile:                 []byte("cql-ca"),
 		CQLServerName:             "scylladb-client.sophena.svc",
+		SSLUserCertFile:           []byte("cql-client-cert"),
+		SSLUserKeyFile:            []byte("cql-client-key"),
 		AlternatorCAFile:          []byte("alternator-ca"),
 		AlternatorServerName:      "scylladb-client.sophena.svc",
 		AgentCAFile:               []byte("agent-ca"),
@@ -58,10 +60,21 @@ func TestCreateClusterSecureFields(t *testing.T) {
 
 	for _, field := range []string{
 		"auth_token", "username", "password", "alternator_access_key_id", "alternator_secret_access_key",
-		"cql_ca_file", "cql_server_name", "alternator_ca_file", "alternator_server_name", "agent_ca_file", "agent_server_name",
+		"cql_ca_file", "cql_server_name", "ssl_user_cert_file", "ssl_user_key_file", "alternator_ca_file", "alternator_server_name", "agent_ca_file", "agent_server_name",
 	} {
 		if _, found := request[field]; !found {
 			t.Errorf("secure Manager request is missing %q", field)
+		}
+	}
+	for field, expected := range map[string]string{
+		"cql_ca_file":        "Y3FsLWNh",
+		"ssl_user_cert_file": "Y3FsLWNsaWVudC1jZXJ0",
+		"ssl_user_key_file":  "Y3FsLWNsaWVudC1rZXk=",
+		"alternator_ca_file": "YWx0ZXJuYXRvci1jYQ==",
+		"agent_ca_file":      "YWdlbnQtY2E=",
+	} {
+		if got, ok := request[field].(string); !ok || got != expected {
+			t.Errorf("secure Manager request field %q wasn't encoded as Swagger byte: expected %q, got %#v", field, expected, request[field])
 		}
 	}
 	for _, forbidden := range []string{"force_tls_disabled", "force_non_ssl_session_port"} {

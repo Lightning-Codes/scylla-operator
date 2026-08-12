@@ -28,6 +28,8 @@ type Cluster struct {
 	AlternatorSecretAccessKey string            `json:"alternator_secret_access_key,omitempty"`
 	CQLCAFile                 []byte            `json:"cql_ca_file,omitempty"`
 	CQLServerName             string            `json:"cql_server_name,omitempty"`
+	SSLUserCertFile           []byte            `json:"ssl_user_cert_file,omitempty"`
+	SSLUserKeyFile            []byte            `json:"ssl_user_key_file,omitempty"`
 	AlternatorCAFile          []byte            `json:"alternator_ca_file,omitempty"`
 	AlternatorServerName      string            `json:"alternator_server_name,omitempty"`
 	AgentCAFile               []byte            `json:"agent_ca_file,omitempty"`

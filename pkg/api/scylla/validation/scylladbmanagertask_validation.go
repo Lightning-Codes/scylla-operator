@@ -41,6 +41,7 @@ var (
 	supportedScyllaDBManagerTaskTypes = []scyllav1alpha1.ScyllaDBManagerTaskType{
 		scyllav1alpha1.ScyllaDBManagerTaskTypeBackup,
 		scyllav1alpha1.ScyllaDBManagerTaskTypeRepair,
+		scyllav1alpha1.ScyllaDBManagerTaskTypeValidateBackup,
 	}
 
 	// https://github.com/scylladb/scylla-manager/blob/c599d2025d98c13fa3bc943a5456df7c527c5de3/backupspec/location.go
@@ -57,6 +58,7 @@ type validateScyllaDBManagerTaskObjectMetaFlags struct {
 
 type validateScyllaDBManagerTaskObjectMetaAnnotationsFlags struct {
 	isScyllaDBManagerTaskScheduleCronNil              bool
+	isScyllaDBManagerTaskScheduleTimezoneNil          bool
 	isScyllaDBManagerTaskRepairIntensityNil           bool
 	isScyllaDBManagerTaskRepairSmallTableThresholdNil bool
 }
@@ -95,13 +97,15 @@ func ValidateScyllaDBManagerTask(smt *scyllav1alpha1.ScyllaDBManagerTask) field.
 }
 
 func makeValidateScyllaDBManagerTaskObjectMetaFlags(smt *scyllav1alpha1.ScyllaDBManagerTask) *validateScyllaDBManagerTaskObjectMetaFlags {
-	isScheduleCronNil := (smt.Spec.Backup == nil || smt.Spec.Backup.Cron == nil) && (smt.Spec.Repair == nil || smt.Spec.Repair.Cron == nil)
+	isScheduleCronNil := (smt.Spec.Backup == nil || smt.Spec.Backup.Cron == nil) && (smt.Spec.Repair == nil || smt.Spec.Repair.Cron == nil) && (smt.Spec.ValidateBackup == nil || smt.Spec.ValidateBackup.Cron == nil)
+	isScheduleTimezoneNil := (smt.Spec.Backup == nil || smt.Spec.Backup.Timezone == nil) && (smt.Spec.Repair == nil || smt.Spec.Repair.Timezone == nil) && (smt.Spec.ValidateBackup == nil || smt.Spec.ValidateBackup.Timezone == nil)
 	isRepairIntensityNil := smt.Spec.Repair == nil || smt.Spec.Repair.Intensity == nil
 	isRepairSmallTableThresholdNil := smt.Spec.Repair == nil || smt.Spec.Repair.SmallTableThreshold == nil
 
 	return &validateScyllaDBManagerTaskObjectMetaFlags{
 		validateScyllaDBManagerTaskObjectMetaAnnotationsFlags: validateScyllaDBManagerTaskObjectMetaAnnotationsFlags{
 			isScyllaDBManagerTaskScheduleCronNil:              isScheduleCronNil,
+			isScyllaDBManagerTaskScheduleTimezoneNil:          isScheduleTimezoneNil,
 			isScyllaDBManagerTaskRepairIntensityNil:           isRepairIntensityNil,
 			isScyllaDBManagerTaskRepairSmallTableThresholdNil: isRepairSmallTableThresholdNil,
 		},
@@ -166,6 +170,9 @@ func validateScyllaDBManagerTaskObjectMetaAnnotations(annotations map[string]str
 		if flags.isScyllaDBManagerTaskScheduleCronNil {
 			allErrs = append(allErrs, field.Forbidden(fldPath.Key(naming.ScyllaDBManagerTaskScheduleTimezoneOverrideAnnotation), "can't be set when cron is not specified"))
 		}
+		if !flags.isScyllaDBManagerTaskScheduleTimezoneNil {
+			allErrs = append(allErrs, field.Forbidden(fldPath.Key(naming.ScyllaDBManagerTaskScheduleTimezoneOverrideAnnotation), "can't be used together with the task schedule's timezone field"))
+		}
 	}
 
 	repairIntensityOverrideAnnotation, hasRepairIntensityOverrideAnnotation := annotations[naming.ScyllaDBManagerTaskRepairIntensityOverrideAnnotation]
@@ -210,6 +217,14 @@ func validateScyllaDBManagerTaskSpec(spec *scyllav1alpha1.ScyllaDBManagerTaskSpe
 
 		allErrs = append(allErrs, validateScyllaDBManagerRepairTaskOptions(spec.Repair, &flags.validateScyllaDBManagerRepairTaskOptionsFlags, fldPath.Child("repair"))...)
 
+	case scyllav1alpha1.ScyllaDBManagerTaskTypeValidateBackup:
+		if spec.ValidateBackup == nil {
+			allErrs = append(allErrs, field.Required(fldPath.Child("validateBackup"), fmt.Sprintf("validateBackup options are required when task type is %q", scyllav1alpha1.ScyllaDBManagerTaskTypeValidateBackup)))
+			break
+		}
+
+		allErrs = append(allErrs, validateScyllaDBManagerValidateBackupTaskOptions(spec.ValidateBackup, fldPath.Child("validateBackup"))...)
+
 	default:
 		allErrs = append(allErrs, field.NotSupported(fldPath.Child("type"), spec.Type, oslices.ConvertSlice(supportedScyllaDBManagerTaskTypes, oslices.ToString)))
 
@@ -221,6 +236,28 @@ func validateScyllaDBManagerTaskSpec(spec *scyllav1alpha1.ScyllaDBManagerTaskSpe
 
 	if spec.Type != scyllav1alpha1.ScyllaDBManagerTaskTypeRepair && spec.Repair != nil {
 		allErrs = append(allErrs, field.Forbidden(fldPath.Child("repair"), fmt.Sprintf("repair options are forbidden when task type is not %q", scyllav1alpha1.ScyllaDBManagerTaskTypeRepair)))
+	}
+
+	if spec.Type != scyllav1alpha1.ScyllaDBManagerTaskTypeValidateBackup && spec.ValidateBackup != nil {
+		allErrs = append(allErrs, field.Forbidden(fldPath.Child("validateBackup"), fmt.Sprintf("validateBackup options are forbidden when task type is not %q", scyllav1alpha1.ScyllaDBManagerTaskTypeValidateBackup)))
+	}
+
+	return allErrs
+}
+
+func validateScyllaDBManagerValidateBackupTaskOptions(options *scyllav1alpha1.ScyllaDBManagerValidateBackupTaskOptions, fldPath *field.Path) field.ErrorList {
+	var allErrs field.ErrorList
+
+	allErrs = append(allErrs, validateScyllaDBManagerTaskSchedule(&options.ScyllaDBManagerTaskSchedule, fldPath)...)
+	if len(options.Location) == 0 {
+		allErrs = append(allErrs, field.Required(fldPath.Child("location"), "location must not be empty"))
+	} else {
+		for i := range options.Location {
+			allErrs = append(allErrs, validateLocation(options.Location[i], fldPath.Child("location").Index(i))...)
+		}
+	}
+	if options.DeleteOrphanedFiles != nil && *options.DeleteOrphanedFiles {
+		allErrs = append(allErrs, field.NotSupported(fldPath.Child("deleteOrphanedFiles"), true, []string{"false"}))
 	}
 
 	return allErrs
@@ -325,6 +362,14 @@ func validateScyllaDBManagerTaskSchedule(schedule *scyllav1alpha1.ScyllaDBManage
 
 		if strings.Contains(*schedule.Cron, "TZ") {
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("cron"), schedule.Cron, "TZ and CRON_TZ prefixes are forbidden"))
+		}
+	}
+
+	if schedule.Timezone != nil {
+		if schedule.Cron == nil {
+			allErrs = append(allErrs, field.Forbidden(fldPath.Child("timezone"), "can't be set when cron is not specified"))
+		} else if _, err := time.LoadLocation(*schedule.Timezone); err != nil {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("timezone"), *schedule.Timezone, err.Error()))
 		}
 	}
 

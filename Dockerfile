@@ -1,5 +1,5 @@
 # renovate: datasource=docker depName=golang packageName=quay.io/scylladb/scylla-operator-images versioning=regex:^golang-(?<major>\d+)\.(?<minor>\d+)$
-FROM quay.io/scylladb/scylla-operator-images:golang-1.26 AS builder
+FROM quay.io/scylladb/scylla-operator-images:golang-1.26@sha256:1726199592e84a849b6ac569d3ff4aca0c9576b9f3e635f4dbff473b11ec1365 AS builder
 
 RUN groupadd -g 1001 scylla && \
     useradd -u 1001 -g scylla -m scylla
@@ -14,7 +14,7 @@ RUN --mount=type=cache,target=/home/scylla/.cache/go-build,uid=1001,gid=1001 \
     make build --warn-undefined-variables
 
 # renovate: datasource=docker depName=base-ubi-minimal packageName=quay.io/scylladb/scylla-operator-images versioning=regex:^base-ubi-(?<major>\d+)\.(?<minor>\d+)-minimal$
-FROM quay.io/scylladb/scylla-operator-images:base-ubi-9.7-minimal
+FROM quay.io/scylladb/scylla-operator-images:base-ubi-9.7-minimal@sha256:4febee6fea46eae80cc1e9d1ed41efa56d0ce1ea8b8ab3c72ea58712fbd4a833
 
 LABEL org.opencontainers.image.title="Scylla Operator" \
       org.opencontainers.image.description="ScyllaDB Operator for Kubernetes" \

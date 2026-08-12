@@ -83,10 +83,10 @@ func TestValidateScyllaDBManagerTask(t *testing.T) {
 					Type:     field.ErrorTypeNotSupported,
 					Field:    "spec.type",
 					BadValue: scyllav1alpha1.ScyllaDBManagerTaskType("Unsupported"),
-					Detail:   `supported values: "Backup", "Repair"`,
+					Detail:   `supported values: "Backup", "Repair", "ValidateBackup"`,
 				},
 			},
-			expectedErrorString: `spec.type: Unsupported value: "Unsupported": supported values: "Backup", "Repair"`,
+			expectedErrorString: `spec.type: Unsupported value: "Unsupported": supported values: "Backup", "Repair", "ValidateBackup"`,
 		},
 		{
 			name: "missing required options for repair type",
@@ -2035,6 +2035,49 @@ func TestValidateScyllaDBManagerTaskUpdate(t *testing.T) {
 				t.Errorf("expected and actual error strings differ: %s", cmp.Diff(tc.expectedErrorString, errStr))
 			}
 		})
+	}
+}
+
+func TestValidateScyllaDBManagerValidateBackupTaskIsNonDestructive(t *testing.T) {
+	t.Parallel()
+
+	cron := "0 3 * * SUN"
+	timezone := "America/Vancouver"
+	newTask := func() *scyllav1alpha1.ScyllaDBManagerTask {
+		deleteOrphanedFiles := false
+		return &scyllav1alpha1.ScyllaDBManagerTask{
+			Spec: scyllav1alpha1.ScyllaDBManagerTaskSpec{
+				ScyllaDBClusterRef: scyllav1alpha1.LocalScyllaDBReference{Name: "scylladb", Kind: scyllav1alpha1.ScyllaDBDatacenterGVK.Kind},
+				Type:               scyllav1alpha1.ScyllaDBManagerTaskTypeValidateBackup,
+				ValidateBackup: &scyllav1alpha1.ScyllaDBManagerValidateBackupTaskOptions{
+					ScyllaDBManagerTaskSchedule: scyllav1alpha1.ScyllaDBManagerTaskSchedule{Cron: &cron, Timezone: &timezone},
+					Location:                    []string{"s3:sophena-backups"},
+					DeleteOrphanedFiles:         &deleteOrphanedFiles,
+				},
+			},
+		}
+	}
+
+	if errs := ValidateScyllaDBManagerTask(newTask()); len(errs) != 0 {
+		t.Fatalf("expected valid non-destructive validation task, got %v", errs)
+	}
+
+	destructive := newTask()
+	*destructive.Spec.ValidateBackup.DeleteOrphanedFiles = true
+	if errs := ValidateScyllaDBManagerTask(destructive); len(errs) != 1 || errs[0].Field != "spec.validateBackup.deleteOrphanedFiles" {
+		t.Fatalf("expected destructive validation to be rejected exactly, got %#v", errs)
+	}
+
+	missingLocation := newTask()
+	missingLocation.Spec.ValidateBackup.Location = nil
+	if errs := ValidateScyllaDBManagerTask(missingLocation); len(errs) != 1 || errs[0].Field != "spec.validateBackup.location" {
+		t.Fatalf("expected missing location to be rejected exactly, got %#v", errs)
+	}
+
+	timezoneWithoutCron := newTask()
+	timezoneWithoutCron.Spec.ValidateBackup.Cron = nil
+	if errs := ValidateScyllaDBManagerTask(timezoneWithoutCron); len(errs) != 1 || errs[0].Field != "spec.validateBackup.timezone" {
+		t.Fatalf("expected timezone without cron to be rejected exactly, got %#v", errs)
 	}
 }
 

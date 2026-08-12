@@ -67,14 +67,25 @@ func ValidateScyllaDBManagerClusterRegistrationSpec(spec *scyllav1alpha1.ScyllaD
 			allErrs = append(allErrs, field.Required(fldPath.Child("tls", "cql"), "CQL TLS verification is required"))
 		} else {
 			allErrs = append(allErrs, validateScyllaDBManagerClusterRegistrationTLSConfig(spec.TLS.CQL, fldPath.Child("tls", "cql"))...)
+			if spec.TLS.CQL.ClientCertificate == nil {
+				allErrs = append(allErrs, field.Required(fldPath.Child("tls", "cql", "clientCertificate"), "CQL client certificate authentication is required"))
+			} else {
+				allErrs = append(allErrs, validateTLSClientCertificate(spec.TLS.CQL.ClientCertificate, fldPath.Child("tls", "cql", "clientCertificate"))...)
+			}
 		}
 		if spec.TLS.Alternator != nil {
 			allErrs = append(allErrs, validateScyllaDBManagerClusterRegistrationTLSConfig(spec.TLS.Alternator, fldPath.Child("tls", "alternator"))...)
+			if spec.TLS.Alternator.ClientCertificate != nil {
+				allErrs = append(allErrs, field.Forbidden(fldPath.Child("tls", "alternator", "clientCertificate"), "Alternator client certificate authentication is not supported"))
+			}
 		}
 		if spec.TLS.Agent == nil {
 			allErrs = append(allErrs, field.Required(fldPath.Child("tls", "agent"), "Agent TLS verification is required"))
 		} else {
 			allErrs = append(allErrs, validateScyllaDBManagerClusterRegistrationTLSConfig(spec.TLS.Agent, fldPath.Child("tls", "agent"))...)
+			if spec.TLS.Agent.ClientCertificate != nil {
+				allErrs = append(allErrs, field.Forbidden(fldPath.Child("tls", "agent", "clientCertificate"), "Agent client certificate authentication is not supported"))
+			}
 		}
 	}
 
@@ -83,6 +94,15 @@ func ValidateScyllaDBManagerClusterRegistrationSpec(spec *scyllav1alpha1.ScyllaD
 	if hasAlternatorAuthentication != hasAlternatorTLS {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("authentication", "alternator"), hasAlternatorAuthentication, "Alternator authentication and TLS must be configured together"))
 	}
+
+	return allErrs
+}
+
+func validateTLSClientCertificate(config *scyllav1alpha1.ScyllaDBManagerClusterRegistrationTLSClientCertificate, fldPath *field.Path) field.ErrorList {
+	var allErrs field.ErrorList
+
+	allErrs = append(allErrs, validateRequiredSecretKeySelector(&config.CertificateSecretKeyRef, fldPath.Child("certificateSecretKeyRef"))...)
+	allErrs = append(allErrs, validateRequiredSecretKeySelector(&config.PrivateKeySecretKeyRef, fldPath.Child("privateKeySecretKeyRef"))...)
 
 	return allErrs
 }

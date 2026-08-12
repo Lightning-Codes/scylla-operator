@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/scylladb/scylla-manager/v3/pkg/managerclient"
 	"github.com/scylladb/scylla-manager/v3/pkg/util/uuid"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
@@ -80,7 +81,7 @@ func (smtc *Controller) syncFinalizer(ctx context.Context, smt *scyllav1alpha1.S
 		return progressingConditions, fmt.Errorf("can't get ScyllaDB Manager client: %w", err)
 	}
 
-	managerTask, found, err := getScyllaDBManagerClientTask(ctx, smt, clusterID, managerClient)
+	managerTask, found, err := getOwnedScyllaDBManagerClientTaskForFinalization(ctx, smt, clusterID, managerClient)
 	if err != nil {
 		return progressingConditions, fmt.Errorf("can't get ScyllaDB Manager client task: %w", err)
 	}
@@ -117,6 +118,37 @@ func (smtc *Controller) syncFinalizer(ctx context.Context, smt *scyllav1alpha1.S
 	})
 
 	return progressingConditions, nil
+}
+
+func getOwnedScyllaDBManagerClientTaskForFinalization(ctx context.Context, smt *scyllav1alpha1.ScyllaDBManagerTask, clusterID string, managerClient *managerclient.Client) (*managerclient.TaskListItem, bool, error) {
+	taskType, err := scyllaDBManagerClientTaskType(smt)
+	if err != nil {
+		return nil, false, fmt.Errorf("can't get ScyllaDB Manager client task type: %w", err)
+	}
+	tasks, err := managerClient.ListTasks(ctx, clusterID, taskType, true, "", "")
+	if err != nil {
+		return nil, false, fmt.Errorf("can't list ScyllaDB Manager client tasks: %s", managerclienterrors.GetPayloadMessage(err))
+	}
+
+	var owned []*managerclient.TaskListItem
+	for _, task := range tasks.TaskListItemSlice {
+		if isScyllaDBManagerTaskOwnedBy(task, smt) {
+			owned = append(owned, task)
+		}
+	}
+	if len(owned) == 0 {
+		return nil, false, nil
+	}
+	if len(owned) > 1 {
+		return nil, false, fmt.Errorf("more than one %q task claims owner UID %q; refusing ambiguous finalization", taskType, smt.UID)
+	}
+
+	return owned[0], true, nil
+}
+
+func isScyllaDBManagerTaskOwnedBy(managerTask *managerclient.TaskListItem, smt *scyllav1alpha1.ScyllaDBManagerTask) bool {
+	ownerUID, isOwned := managerTask.Labels[naming.OwnerUIDLabel]
+	return isOwned && ownerUID == string(smt.UID)
 }
 
 func (smtc *Controller) removeFinalizer(ctx context.Context, smt *scyllav1alpha1.ScyllaDBManagerTask) error {

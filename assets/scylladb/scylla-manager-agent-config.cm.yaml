@@ -18,6 +18,6 @@ data:
     # The certificate includes the shared client Service DNS name and member/Pod addresses.
     tls_cert_file: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.crt"
     tls_key_file: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.key"
-    
+
     # Default ScyllaDB Manager Agent configuration
     # Additional configuration can be provided via customConfigSecretRef

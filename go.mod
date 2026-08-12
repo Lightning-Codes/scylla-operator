@@ -214,4 +214,8 @@ replace (
 	// Synchronization is performed automatically by the `make update-go-mod-replace` target, do not edit manually.
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring => github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.91.0
 	github.com/prometheus-operator/prometheus-operator/pkg/client => github.com/prometheus-operator/prometheus-operator/pkg/client v0.91.0
+	// Use the reviewed secure Manager fork until its strict cluster transport API is published upstream.
+	github.com/scylladb/scylla-manager/v3/pkg/managerclient => github.com/Lightning-Codes/scylla-manager/v3/pkg/managerclient v0.0.0-20260812150222-a105c67c6c6f
+	github.com/scylladb/scylla-manager/v3/pkg/util => github.com/Lightning-Codes/scylla-manager/v3/pkg/util v0.0.0-20260812150222-a105c67c6c6f
+	github.com/scylladb/scylla-manager/v3/swagger => github.com/Lightning-Codes/scylla-manager/v3/swagger v0.0.0-20260812150222-a105c67c6c6f
 )

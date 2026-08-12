@@ -80,6 +80,10 @@ func indexScyllaDBManagerClusterRegistrationBySecret(obj interface{}) ([]string,
 			if tlsConfig != nil && tlsConfig.CASecretKeyRef != nil {
 				refs[namespacedReferenceKey(smcr.Namespace, tlsConfig.CASecretKeyRef.Name)] = struct{}{}
 			}
+			if tlsConfig != nil && tlsConfig.ClientCertificate != nil {
+				refs[namespacedReferenceKey(smcr.Namespace, tlsConfig.ClientCertificate.CertificateSecretKeyRef.Name)] = struct{}{}
+				refs[namespacedReferenceKey(smcr.Namespace, tlsConfig.ClientCertificate.PrivateKeySecretKeyRef.Name)] = struct{}{}
+			}
 		}
 	}
 

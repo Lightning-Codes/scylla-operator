@@ -40,6 +40,10 @@ const (
 	// Contrary to what it should be, this needs to be quite high.
 	// FIXME: https://github.com/scylladb/scylla-operator/issues/2686
 	maxSyncDuration = 2 * time.Minute
+
+	// safetyRequeuePeriod bounds the time an externally deleted or drifted Manager task
+	// can remain undetected when no Kubernetes object changes generate an event.
+	safetyRequeuePeriod = 5 * time.Minute
 )
 
 var (

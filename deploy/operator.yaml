@@ -1,3 +1,5 @@
+
+---
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -46059,6 +46061,11 @@ spec:
                         - certificateSecretKeyRef
                         - privateKeySecretKeyRef
                       type: object
+                      x-kubernetes-validations:
+                        - message: certificateSecretKeyRef.optional must be false
+                          rule: '!has(self.certificateSecretKeyRef.optional) || !self.certificateSecretKeyRef.optional'
+                        - message: privateKeySecretKeyRef.optional must be false
+                          rule: '!has(self.privateKeySecretKeyRef.optional) || !self.privateKeySecretKeyRef.optional'
                     serverName:
                       description: serverName is the DNS name verified against the Manager API serving certificate.
                       type: string
@@ -46073,6 +46080,10 @@ spec:
                   x-kubernetes-validations:
                     - message: exactly one of caConfigMapKeyRef or caSecretKeyRef is required
                       rule: has(self.caConfigMapKeyRef) != has(self.caSecretKeyRef)
+                    - message: caConfigMapKeyRef.optional must be false
+                      rule: '!has(self.caConfigMapKeyRef) || !has(self.caConfigMapKeyRef.optional) || !self.caConfigMapKeyRef.optional'
+                    - message: caSecretKeyRef.optional must be false
+                      rule: '!has(self.caSecretKeyRef) || !has(self.caSecretKeyRef.optional) || !self.caSecretKeyRef.optional'
                 scyllaDBClusterRef:
                   description: |-
                     scyllaDBClusterRef specifies the typed reference to the local ScyllaDB cluster.
@@ -46147,6 +46158,64 @@ spec:
                             - key
                           type: object
                           x-kubernetes-map-type: atomic
+                        clientCertificate:
+                          description: |-
+                            clientCertificate configures the database client identity used for mutual TLS.
+                            It is required for CQL and omitted for endpoint types that don't request client certificates.
+                          properties:
+                            certificateSecretKeyRef:
+                              description: certificateSecretKeyRef selects a PEM client certificate from a Secret in the registration namespace.
+                              properties:
+                                key:
+                                  description: The key of the secret to select from.  Must be a valid secret key.
+                                  type: string
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                                optional:
+                                  description: Specify whether the Secret or its key must be defined
+                                  type: boolean
+                              required:
+                                - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            privateKeySecretKeyRef:
+                              description: privateKeySecretKeyRef selects the corresponding PEM private key from a Secret in the registration namespace.
+                              properties:
+                                key:
+                                  description: The key of the secret to select from.  Must be a valid secret key.
+                                  type: string
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                                optional:
+                                  description: Specify whether the Secret or its key must be defined
+                                  type: boolean
+                              required:
+                                - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                          required:
+                            - certificateSecretKeyRef
+                            - privateKeySecretKeyRef
+                          type: object
+                          x-kubernetes-validations:
+                            - message: certificateSecretKeyRef.optional must be false
+                              rule: '!has(self.certificateSecretKeyRef.optional) || !self.certificateSecretKeyRef.optional'
+                            - message: privateKeySecretKeyRef.optional must be false
+                              rule: '!has(self.privateKeySecretKeyRef.optional) || !self.privateKeySecretKeyRef.optional'
                         serverName:
                           description: serverName is the DNS name Manager must verify against the serving certificate.
                           type: string
@@ -46156,6 +46225,10 @@ spec:
                       x-kubernetes-validations:
                         - message: exactly one of caConfigMapKeyRef or caSecretKeyRef is required
                           rule: has(self.caConfigMapKeyRef) != has(self.caSecretKeyRef)
+                        - message: caConfigMapKeyRef.optional must be false
+                          rule: '!has(self.caConfigMapKeyRef) || !has(self.caConfigMapKeyRef.optional) || !self.caConfigMapKeyRef.optional'
+                        - message: caSecretKeyRef.optional must be false
+                          rule: '!has(self.caSecretKeyRef) || !has(self.caSecretKeyRef.optional) || !self.caSecretKeyRef.optional'
                     alternator:
                       description: alternator configures strict Alternator server certificate verification.
                       properties:
@@ -46207,6 +46280,64 @@ spec:
                             - key
                           type: object
                           x-kubernetes-map-type: atomic
+                        clientCertificate:
+                          description: |-
+                            clientCertificate configures the database client identity used for mutual TLS.
+                            It is required for CQL and omitted for endpoint types that don't request client certificates.
+                          properties:
+                            certificateSecretKeyRef:
+                              description: certificateSecretKeyRef selects a PEM client certificate from a Secret in the registration namespace.
+                              properties:
+                                key:
+                                  description: The key of the secret to select from.  Must be a valid secret key.
+                                  type: string
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                                optional:
+                                  description: Specify whether the Secret or its key must be defined
+                                  type: boolean
+                              required:
+                                - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            privateKeySecretKeyRef:
+                              description: privateKeySecretKeyRef selects the corresponding PEM private key from a Secret in the registration namespace.
+                              properties:
+                                key:
+                                  description: The key of the secret to select from.  Must be a valid secret key.
+                                  type: string
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                                optional:
+                                  description: Specify whether the Secret or its key must be defined
+                                  type: boolean
+                              required:
+                                - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                          required:
+                            - certificateSecretKeyRef
+                            - privateKeySecretKeyRef
+                          type: object
+                          x-kubernetes-validations:
+                            - message: certificateSecretKeyRef.optional must be false
+                              rule: '!has(self.certificateSecretKeyRef.optional) || !self.certificateSecretKeyRef.optional'
+                            - message: privateKeySecretKeyRef.optional must be false
+                              rule: '!has(self.privateKeySecretKeyRef.optional) || !self.privateKeySecretKeyRef.optional'
                         serverName:
                           description: serverName is the DNS name Manager must verify against the serving certificate.
                           type: string
@@ -46216,6 +46347,10 @@ spec:
                       x-kubernetes-validations:
                         - message: exactly one of caConfigMapKeyRef or caSecretKeyRef is required
                           rule: has(self.caConfigMapKeyRef) != has(self.caSecretKeyRef)
+                        - message: caConfigMapKeyRef.optional must be false
+                          rule: '!has(self.caConfigMapKeyRef) || !has(self.caConfigMapKeyRef.optional) || !self.caConfigMapKeyRef.optional'
+                        - message: caSecretKeyRef.optional must be false
+                          rule: '!has(self.caSecretKeyRef) || !has(self.caSecretKeyRef.optional) || !self.caSecretKeyRef.optional'
                     cql:
                       description: cql configures strict CQL server certificate verification.
                       properties:
@@ -46267,6 +46402,64 @@ spec:
                             - key
                           type: object
                           x-kubernetes-map-type: atomic
+                        clientCertificate:
+                          description: |-
+                            clientCertificate configures the database client identity used for mutual TLS.
+                            It is required for CQL and omitted for endpoint types that don't request client certificates.
+                          properties:
+                            certificateSecretKeyRef:
+                              description: certificateSecretKeyRef selects a PEM client certificate from a Secret in the registration namespace.
+                              properties:
+                                key:
+                                  description: The key of the secret to select from.  Must be a valid secret key.
+                                  type: string
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                                optional:
+                                  description: Specify whether the Secret or its key must be defined
+                                  type: boolean
+                              required:
+                                - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            privateKeySecretKeyRef:
+                              description: privateKeySecretKeyRef selects the corresponding PEM private key from a Secret in the registration namespace.
+                              properties:
+                                key:
+                                  description: The key of the secret to select from.  Must be a valid secret key.
+                                  type: string
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                                optional:
+                                  description: Specify whether the Secret or its key must be defined
+                                  type: boolean
+                              required:
+                                - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                          required:
+                            - certificateSecretKeyRef
+                            - privateKeySecretKeyRef
+                          type: object
+                          x-kubernetes-validations:
+                            - message: certificateSecretKeyRef.optional must be false
+                              rule: '!has(self.certificateSecretKeyRef.optional) || !self.certificateSecretKeyRef.optional'
+                            - message: privateKeySecretKeyRef.optional must be false
+                              rule: '!has(self.privateKeySecretKeyRef.optional) || !self.privateKeySecretKeyRef.optional'
                         serverName:
                           description: serverName is the DNS name Manager must verify against the serving certificate.
                           type: string
@@ -46276,10 +46469,21 @@ spec:
                       x-kubernetes-validations:
                         - message: exactly one of caConfigMapKeyRef or caSecretKeyRef is required
                           rule: has(self.caConfigMapKeyRef) != has(self.caSecretKeyRef)
+                        - message: caConfigMapKeyRef.optional must be false
+                          rule: '!has(self.caConfigMapKeyRef) || !has(self.caConfigMapKeyRef.optional) || !self.caConfigMapKeyRef.optional'
+                        - message: caSecretKeyRef.optional must be false
+                          rule: '!has(self.caSecretKeyRef) || !has(self.caSecretKeyRef.optional) || !self.caSecretKeyRef.optional'
                   required:
                     - agent
                     - cql
                   type: object
+                  x-kubernetes-validations:
+                    - message: CQL clientCertificate is required
+                      rule: has(self.cql) && has(self.cql.clientCertificate)
+                    - message: Alternator clientCertificate is not supported
+                      rule: '!has(self.alternator) || !has(self.alternator.clientCertificate)'
+                    - message: Agent clientCertificate is not supported
+                      rule: '!has(self.agent) || !has(self.agent.clientCertificate)'
               required:
                 - authentication
                 - managerAPI
@@ -46482,6 +46686,11 @@ spec:
                         If not set, the task is started immediately.
                       format: date-time
                       type: string
+                    timezone:
+                      description: |-
+                        timezone specifies the IANA timezone in which cron is evaluated.
+                        It can only be set together with cron. If not set, ScyllaDB Manager's default timezone is used.
+                      type: string
                     uploadParallel:
                       description: |-
                         uploadParallel specifies a list of upload parallelism limits in the following format: `[<dc>:]<limit>`.
@@ -46566,6 +46775,11 @@ spec:
                         If not set, the task is started immediately.
                       format: date-time
                       type: string
+                    timezone:
+                      description: |-
+                        timezone specifies the IANA timezone in which cron is evaluated.
+                        It can only be set together with cron. If not set, ScyllaDB Manager's default timezone is used.
+                      type: string
                   type: object
                 scyllaDBClusterRef:
                   description: |-
@@ -46590,6 +46804,50 @@ spec:
                 type:
                   description: type specifies the type of the task.
                   type: string
+                validateBackup:
+                  description: validateBackup specifies the options for a non-destructive backup validation task.
+                  properties:
+                    cron:
+                      description: |-
+                        cron specifies the task schedule as a cron expression.
+                        It supports the "standard" cron syntax `MIN HOUR DOM MON DOW`, as used by the Linux utility, as well as a set of non-standard macros: "@yearly", "@annually", "@monthly", "@weekly", "@daily", "@midnight", "@hourly", "@every [+-]?<duration>".
+                      type: string
+                    deleteOrphanedFiles:
+                      default: false
+                      description: deleteOrphanedFiles is deliberately false-only. This task validates backups and never mutates backup storage.
+                      enum:
+                        - false
+                      type: boolean
+                    location:
+                      description: |-
+                        location specifies one or more backup locations in `[<dc>:]<provider>:<name>` format.
+                        Validation is limited to these locations.
+                      items:
+                        type: string
+                      type: array
+                    numRetries:
+                      description: numRetries specifies how many times a scheduled task should be retried before failing.
+                      format: int64
+                      type: integer
+                    retryWait:
+                      description: |-
+                        retryWait specifies the initial exponential backoff duration for task retries.
+                        For instance, if set to 10 minutes, the first retry will be attempted after 10 minutes, the second after 20 minutes, the third after 40 minutes, and so on, up to the number of retries specified in `numRetries`.
+                        If not set, the default values is left to ScyllaDB Manager to decide.
+                      type: string
+                    startDate:
+                      description: |-
+                        startDate specifies the start date of the task.
+                        It is represented in RFC3339 form and is in UTC.
+                        If not set, the task is started immediately.
+                      format: date-time
+                      type: string
+                    timezone:
+                      description: |-
+                        timezone specifies the IANA timezone in which cron is evaluated.
+                        It can only be set together with cron. If not set, ScyllaDB Manager's default timezone is used.
+                      type: string
+                  type: object
               type: object
             status:
               description: status reflects the observed state of ScyllaDBManagerTask.
@@ -46650,6 +46908,21 @@ spec:
                       - type
                     type: object
                   type: array
+                lastError:
+                  description: lastError is the latest failed activation reported by ScyllaDB Manager.
+                  format: date-time
+                  type: string
+                lastSuccess:
+                  description: lastSuccess is the latest successful activation reported by ScyllaDB Manager.
+                  format: date-time
+                  type: string
+                managerStatus:
+                  description: managerStatus is the task's current scheduler status as read back from ScyllaDB Manager.
+                  type: string
+                nextActivation:
+                  description: nextActivation is the next scheduled activation reported by ScyllaDB Manager.
+                  format: date-time
+                  type: string
                 observedGeneration:
                   description: |-
                     observedGeneration is the most recent generation observed for this ScyllaDBManagerTask. It corresponds to the
@@ -49872,5 +50145,3 @@ spec:
                   app.kubernetes.io/name: webhook-server
               topologyKey: kubernetes.io/hostname
             weight: 1
-
----

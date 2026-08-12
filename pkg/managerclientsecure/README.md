@@ -1,31 +1,40 @@
 # Secure Manager client compatibility layer
 
-This package isolates the unpublished API additions from the companion
-`Lightning-Codes/scylla-manager` branch `sophena/secure-cluster-tls` (based on
-`2acf67ce11ffb64185b760d74021d503860205ef`). It intentionally implements only
-secure cluster create/update and verification-status calls.
-
-After that Manager branch is published as a Go module:
-
-1. update `github.com/scylladb/scylla-manager/v3` to the published commit;
-2. regenerate its Swagger client with `cql_ca_file`, `cql_server_name`,
-   `alternator_ca_file`, `alternator_server_name`, `agent_ca_file`, and
-   `agent_server_name`, plus the corresponding `*_verified` status fields;
-3. replace imports of this package with the generated `managerclient` types and
-   calls; and
-4. delete this directory after equivalent request-redaction and unit tests pass.
+This package isolates the secure transport API additions from the reviewed
+`Lightning-Codes/scylla-manager` branch `sophena/secure-cluster-tls`, source
+commit `9ad07edada8eb3f158be2ccccd642945e3007549` (based on
+`2acf67ce11ffb64185b760d74021d503860205ef`). The three generated Go modules
+are pinned to its code-bearing ancestor
+`a105c67c6c6fcf6ed5fee01c682fae163cb4998a`; the two later files are release
+workflow and deployment documentation only. This compatibility layer
+intentionally implements only secure cluster create/update and
+verification-status calls and can be removed after the secure fields are
+available in an upstream Manager release with equivalent redaction tests.
 
 Raw credentials and CA bundles exist only in request-scoped values and are not
 included in status, labels, events, or the managed revision.
 
-Image publication is deliberately blocked until this compatibility dependency
-is replaced by the companion Manager commit. The manual-only
-`.github/workflows/secure-operator-image.yaml` workflow resolves all three
-Manager modules, requires their effective pseudo-versions to match the supplied
-40-character secure Manager commit, rejects filesystem `replace` directives,
-and runs tests before it can push an immutable multi-platform index plus exact
-amd64 and arm64 digests. Do not create a tag or invoke that workflow until the
-companion commit and remote module replacements have passed final review.
+For Operator-managed CQL TLS, `spec.tls.cql.clientCertificate` must select the
+client certificate and key accepted by Scylla's client CA. The existing
+Operator-generated `<cluster>-local-user-admin` Secret (`tls.crt`, `tls.key`)
+has the transport certificate identity `admin`. With the standard password
+authenticator used by this contract, that certificate identity does not grant
+or select a CQL role: the separately selected username and password determine
+the database role. A production least-privilege Manager deployment therefore
+uses credentials owned by the independent ScyllaDBRole lifecycle, and may use
+a dedicated client certificate to avoid sharing the admin transport identity.
+This fork does not create database roles or Jobs; the ScyllaDBRole controller
+remains the separate owner of that lifecycle. A custom certificate
+authenticator or role mapper would be a different, explicitly configured
+contract.
+
+The manual-only `.github/workflows/secure-operator-image.yaml` workflow
+resolves all three Manager modules, requires their effective pseudo-versions
+and VCS origins to match the supplied 40-character secure Manager code commit,
+rejects filesystem `replace` directives, and runs tests before it can publish
+a digest-only multi-platform candidate. It verifies both child manifests,
+attests them before creating an absent-only tag, and requires anonymous public
+pulls of the final digest and tag.
 
 The legacy global-Manager controller is deliberately not started by this fork:
 it has no source for namespace-local database credentials, endpoint CAs, or the

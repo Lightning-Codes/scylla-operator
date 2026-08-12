@@ -35,6 +35,10 @@ func TestConnectionMaterialIndexes(t *testing.T) {
 			TLS: &scyllav1alpha1.ScyllaDBManagerClusterRegistrationTLS{
 				CQL: &scyllav1alpha1.ScyllaDBManagerClusterRegistrationTLSConfig{
 					CAConfigMapKeyRef: &corev1.ConfigMapKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "database-ca"}, Key: "ca-bundle.crt"},
+					ClientCertificate: &scyllav1alpha1.ScyllaDBManagerClusterRegistrationTLSClientCertificate{
+						CertificateSecretKeyRef: corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "database-client-tls"}, Key: corev1.TLSCertKey},
+						PrivateKeySecretKeyRef:  corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "database-client-tls"}, Key: corev1.TLSPrivateKeyKey},
+					},
 				},
 				Agent: &scyllav1alpha1.ScyllaDBManagerClusterRegistrationTLSConfig{
 					CASecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "agent-ca"}, Key: "ca.crt"},
@@ -50,6 +54,7 @@ func TestConnectionMaterialIndexes(t *testing.T) {
 	expectedSecretRefs := []string{
 		"sophena/agent-ca",
 		"sophena/database-auth",
+		"sophena/database-client-tls",
 		"sophena/manager-client",
 		"sophena/scylladb-auth-token",
 	}

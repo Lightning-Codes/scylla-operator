@@ -125,7 +125,14 @@ func (smtc *Controller) syncManager(
 
 	ownerUIDLabelValue, hasOwnerUIDLabel := managerTask.Labels[naming.OwnerUIDLabel]
 	_, hasMissingOwnerUIDForceAdoptAnnotation := smt.Annotations[naming.ScyllaDBManagerTaskMissingOwnerUIDForceAdoptAnnotation]
-	if !hasOwnerUIDLabel && hasMissingOwnerUIDForceAdoptAnnotation {
+	safeValidateBackupAdoption := smt.Spec.Type == scyllav1alpha1.ScyllaDBManagerTaskTypeValidateBackup && !hasOwnerUIDLabel && isNonDestructiveValidateBackupTask(managerTask)
+	if safeValidateBackupAdoption {
+		// A sole, canonical, ownerless validation task is safe to adopt because the required
+		// state below is always non-destructive and is written back before it is considered current.
+		klog.Warningf("Adopting sole non-destructive validate_backup task %q (%q) into ScyllaDBManagerTask %q.", managerTask.Name, managerTask.ID, klog.KObj(smt))
+	} else if smt.Spec.Type == scyllav1alpha1.ScyllaDBManagerTaskTypeValidateBackup && !hasOwnerUIDLabel {
+		return progressingConditions, controllertools.NonRetriable(fmt.Errorf("validate_backup task %q exists without an owner UID and is not provably non-destructive; refusing to adopt, update, or delete it", managerTask.Name))
+	} else if !hasOwnerUIDLabel && hasMissingOwnerUIDForceAdoptAnnotation {
 		// The task could have been created by the legacy component (manager-controller), in which case it does not have the owner UID label.
 		// For backward compatibility, we adopt it instead of recreating it if the internal annotation forcing adoption is set.
 		klog.Warningf("Task %q (%q) already exists in ScyllaDB Manager state with no owner UID label. ScyllaDBManagerTask %q will adopt it as it has the annotation forcing its adoption: %q.", managerTask.Name, managerTask.ID, klog.KObj(smt), naming.ScyllaDBManagerTaskMissingOwnerUIDForceAdoptAnnotation)
@@ -146,14 +153,18 @@ func (smtc *Controller) syncManager(
 		return progressingConditions, controllertools.NonRetriable(fmt.Errorf("task %q already exists in ScyllaDB Manager state with a mismatching owner UID label value (%q)", managerTask.Name, ownerUIDLabelValue))
 	}
 
-	status.TaskID = &managerTask.ID
+	syncScyllaDBManagerTaskReadbackStatus(status, managerTask)
 
 	err = smtc.syncScyllaV1TaskStatusAnnotation(ctx, smt, managerTask)
 	if err != nil {
 		return progressingConditions, fmt.Errorf("can't sync scyllav1 task status annotation for ScyllaDBManagerTask %q: %w", naming.ObjRef(smt), err)
 	}
 
-	if ownerUIDLabelValue == string(smt.UID) && requiredManagerTask.Labels[naming.ManagedHash] == managerTask.Labels[naming.ManagedHash] {
+	managerTaskMatchesDesired := requiredManagerTask.Labels[naming.ManagedHash] == managerTask.Labels[naming.ManagedHash]
+	if smt.Spec.Type == scyllav1alpha1.ScyllaDBManagerTaskTypeValidateBackup {
+		managerTaskMatchesDesired = validateBackupManagerTaskMatchesDesired(managerTask, requiredManagerTask)
+	}
+	if ownerUIDLabelValue == string(smt.UID) && managerTaskMatchesDesired {
 		// Cluster matches the desired state, nothing to do.
 		return progressingConditions, nil
 	}
@@ -207,6 +218,10 @@ func (smtc *Controller) syncManagerClientTaskNotFound(
 	clusterID string,
 ) ([]metav1.Condition, error) {
 	var progressingConditions []metav1.Condition
+	status.ManagerStatus = nil
+	status.NextActivation = nil
+	status.LastSuccess = nil
+	status.LastError = nil
 
 	requiredManagerTask, err := makeScyllaDBManagerClientTask(smt, clusterID)
 	if err != nil {
@@ -279,33 +294,43 @@ func getScyllaDBManagerClientTask(ctx context.Context, smt *scyllav1alpha1.Scyll
 		return nil, false, fmt.Errorf("can't get ScyllaDB Manager client task type: %w", err)
 	}
 
-	var taskID string
-	if smt.Status.TaskID != nil {
-		taskID = *smt.Status.TaskID
-	}
-
-	tasks, err := managerClient.ListTasks(ctx, clusterID, taskType, true, "", taskID)
+	// Always list the complete task type and resolve by canonical name. Filtering by a
+	// status task ID can miss an externally recreated task and create a duplicate.
+	tasks, err := managerClient.ListTasks(ctx, clusterID, taskType, true, "", "")
 	if err != nil {
-		klog.V(4).InfoS("Failed to list ScyllaDB Manager client tasks.", "ScyllaDBManagerTask", klog.KObj(smt), "ScyllaDBManagerClientClusterID", clusterID, "ScyllaDBManagerClientTaskType", taskType, "ScyllaDBManagerClientTaskID", taskID, "Error", err)
+		klog.V(4).InfoS("Failed to list ScyllaDB Manager client tasks.", "ScyllaDBManagerTask", klog.KObj(smt), "ScyllaDBManagerClientClusterID", clusterID, "ScyllaDBManagerClientTaskType", taskType, "Error", err)
 		return nil, false, fmt.Errorf("can't list ScyllaDB Manager client tasks: %s", managerclienterrors.GetPayloadMessage(err))
 	}
 
-	if len(tasks.TaskListItemSlice) == 0 {
-		return nil, false, nil
-	}
+	return resolveScyllaDBManagerClientTask(tasks.TaskListItemSlice, taskType, taskName, string(smt.UID))
+}
 
-	if len(taskID) > 0 && len(tasks.TaskListItemSlice) > 1 {
-		return nil, false, fmt.Errorf("more than one task found in ScyllaDB Manager state with taskID: %s", taskID)
-	}
-
-	idx := slices.IndexFunc(tasks.TaskListItemSlice, func(item *managerclient.TaskListItem) bool {
-		return item.Name == taskName
+func resolveScyllaDBManagerClientTask(tasks []*managerclient.TaskListItem, taskType, taskName, ownerUID string) (*managerclient.TaskListItem, bool, error) {
+	nameMatches := slices.DeleteFunc(slices.Clone(tasks), func(item *managerclient.TaskListItem) bool {
+		return item.Name != taskName
 	})
-	if idx < 0 {
-		return nil, false, nil
+	if len(nameMatches) > 1 {
+		return nil, false, controllertools.NonRetriable(fmt.Errorf("more than one %q task named %q exists in ScyllaDB Manager state; refusing to create, adopt, update, or delete an ambiguous task", taskType, taskName))
+	}
+	ownerMatches := slices.DeleteFunc(slices.Clone(tasks), func(item *managerclient.TaskListItem) bool {
+		return item.Labels[naming.OwnerUIDLabel] != ownerUID
+	})
+	if len(ownerMatches) > 1 {
+		return nil, false, controllertools.NonRetriable(fmt.Errorf("more than one %q task claims owner UID %q; refusing to create, adopt, update, or delete an ambiguous task", taskType, ownerUID))
+	}
+	if len(nameMatches) == 1 && len(ownerMatches) == 1 && nameMatches[0].ID != ownerMatches[0].ID {
+		return nil, false, controllertools.NonRetriable(fmt.Errorf("task name %q and owner UID %q resolve to different %q tasks; refusing an ambiguous reconciliation", taskName, ownerUID, taskType))
+	}
+	if len(ownerMatches) == 1 {
+		// Owner UID is immutable Kubernetes identity. Returning an externally renamed task
+		// updates its name in place instead of creating a second owned task.
+		return ownerMatches[0], true, nil
+	}
+	if len(nameMatches) == 1 {
+		return nameMatches[0], true, nil
 	}
 
-	return tasks.TaskListItemSlice[idx], true, nil
+	return nil, false, nil
 }
 
 type scyllaDBManagerClientTaskOverrideOption func(*scyllav1alpha1.ScyllaDBManagerTask, *managerclient.Task)
@@ -403,6 +428,16 @@ func makeScyllaDBManagerClientTaskWithManagedHashFunc(smt *scyllav1alpha1.Scylla
 		if err != nil {
 			return nil, fmt.Errorf("can't make ScyllaDB Manager client repair task properties: %w", err)
 		}
+
+	case scyllav1alpha1.ScyllaDBManagerTaskTypeValidateBackup:
+		managerClientTaskType = managerclient.ValidateBackupTask
+
+		managerClientTaskSchedule, err = makeScyllaDBManagerClientSchedule(&smt.Spec.ValidateBackup.ScyllaDBManagerTaskSchedule, scheduleOverrideOptions...)
+		if err != nil {
+			return nil, fmt.Errorf("can't make ScyllaDB Manager client schedule: %w", err)
+		}
+
+		managerClientTaskProperties = makeScyllaDBManagerClientValidateBackupTaskProperties(smt.Spec.ValidateBackup)
 
 	default:
 		return nil, fmt.Errorf("unsupported ScyllaDBManagerTaskType: %q", smt.Spec.Type)
@@ -502,6 +537,10 @@ func makeScyllaDBManagerClientSchedule(scyllaDBManagerTaskSchedule *scyllav1alph
 		managerClientSchedule.Cron = *scyllaDBManagerTaskSchedule.Cron
 	}
 
+	if scyllaDBManagerTaskSchedule.Timezone != nil {
+		managerClientSchedule.Timezone = *scyllaDBManagerTaskSchedule.Timezone
+	}
+
 	if scyllaDBManagerTaskSchedule.StartDate != nil {
 		managerClientSchedule.StartDate = pointer.Ptr(strfmt.DateTime(scyllaDBManagerTaskSchedule.StartDate.Time))
 	}
@@ -560,6 +599,13 @@ func makeScyllaDBManagerClientBackupTaskProperties(options *scyllav1alpha1.Scyll
 	}
 
 	return managerClientTaskProperties, nil
+}
+
+func makeScyllaDBManagerClientValidateBackupTaskProperties(options *scyllav1alpha1.ScyllaDBManagerValidateBackupTaskOptions) map[string]any {
+	return map[string]any{
+		"location":              slices.Clone(options.Location),
+		"delete_orphaned_files": false,
+	}
 }
 
 type scyllaDBManagerClientPropertiesOverrideOption func(map[string]any) error
@@ -690,6 +736,9 @@ func scyllaDBManagerClientTaskType(smt *scyllav1alpha1.ScyllaDBManagerTask) (str
 	case scyllav1alpha1.ScyllaDBManagerTaskTypeRepair:
 		return managerclient.RepairTask, nil
 
+	case scyllav1alpha1.ScyllaDBManagerTaskTypeValidateBackup:
+		return managerclient.ValidateBackupTask, nil
+
 	default:
 		return "", fmt.Errorf("unsupported ScyllaDBManagerTask type: %q", smt.Spec.Type)
 
@@ -706,6 +755,11 @@ func scyllaDBManagerClientTaskName(smt *scyllav1alpha1.ScyllaDBManagerTask) stri
 }
 
 func (smtc *Controller) syncScyllaV1TaskStatusAnnotation(ctx context.Context, smt *scyllav1alpha1.ScyllaDBManagerTask, managerClientTask *managerclient.TaskListItem) error {
+	if managerClientTask.Type == managerclient.ValidateBackupTask {
+		// This annotation is a compatibility projection into the legacy v1 ScyllaCluster
+		// backup/repair status types, which have no validate_backup representation.
+		return nil
+	}
 	scyllaV1TaskStatusAnnotationValue, err := makeScyllaV1TaskStatusAnnotationValue(managerClientTask)
 	if err != nil {
 		return fmt.Errorf("can't make scyllav1 task status annotation value: %w", err)
@@ -726,6 +780,105 @@ func (smtc *Controller) syncScyllaV1TaskStatusAnnotation(ctx context.Context, sm
 	}
 
 	return nil
+}
+
+func isNonDestructiveValidateBackupTask(task *managerclient.TaskListItem) bool {
+	properties, ok := task.Properties.(map[string]interface{})
+	if !ok {
+		return false
+	}
+
+	value, found := properties["delete_orphaned_files"]
+	if !found {
+		return true
+	}
+
+	deleteOrphanedFiles, ok := value.(bool)
+	return ok && !deleteOrphanedFiles
+}
+
+func validateBackupManagerTaskMatchesDesired(observed *managerclient.TaskListItem, desired *managerclient.Task) bool {
+	if observed.Type != desired.Type || observed.Name != desired.Name || !observed.Enabled {
+		return false
+	}
+	if !managerSchedulesEqual(observed.Schedule, desired.Schedule) {
+		return false
+	}
+	if observed.Labels[naming.OwnerUIDLabel] != desired.Labels[naming.OwnerUIDLabel] || observed.Labels[naming.ManagedHash] != desired.Labels[naming.ManagedHash] {
+		return false
+	}
+
+	observedProperties, ok := observed.Properties.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	desiredProperties, ok := desired.Properties.(map[string]any)
+	if !ok {
+		return false
+	}
+	observedLocations, ok := stringSliceProperty(observedProperties["location"])
+	if !ok {
+		return false
+	}
+	desiredLocations, ok := stringSliceProperty(desiredProperties["location"])
+	if !ok || !slices.Equal(observedLocations, desiredLocations) {
+		return false
+	}
+	deleteOrphanedFiles, ok := observedProperties["delete_orphaned_files"].(bool)
+	return ok && !deleteOrphanedFiles && len(observedProperties) == 2
+}
+
+func managerSchedulesEqual(observed, desired *managerclient.Schedule) bool {
+	if observed == nil || desired == nil {
+		return observed == nil && desired == nil
+	}
+	if observed.Cron != desired.Cron || observed.Interval != desired.Interval || observed.NumRetries != desired.NumRetries || observed.RetryWait != desired.RetryWait || observed.Timezone != desired.Timezone || !slices.Equal(observed.Window, desired.Window) {
+		return false
+	}
+	if desired.StartDate == nil {
+		// Manager owns the concrete initial activation when the API leaves startDate unset.
+		return true
+	}
+	if observed.StartDate == nil {
+		return false
+	}
+
+	return time.Time(*observed.StartDate).Equal(time.Time(*desired.StartDate))
+}
+
+func stringSliceProperty(value any) ([]string, bool) {
+	switch typed := value.(type) {
+	case []string:
+		return slices.Clone(typed), true
+	case []interface{}:
+		result := make([]string, len(typed))
+		for i := range typed {
+			item, ok := typed[i].(string)
+			if !ok {
+				return nil, false
+			}
+			result[i] = item
+		}
+		return result, true
+	default:
+		return nil, false
+	}
+}
+
+func syncScyllaDBManagerTaskReadbackStatus(status *scyllav1alpha1.ScyllaDBManagerTaskStatus, task *managerclient.TaskListItem) {
+	status.TaskID = pointer.Ptr(task.ID)
+	status.ManagerStatus = pointer.Ptr(task.Status)
+	status.NextActivation = metav1TimeFromStrfmt(task.NextActivation)
+	status.LastSuccess = metav1TimeFromStrfmt(task.LastSuccess)
+	status.LastError = metav1TimeFromStrfmt(task.LastError)
+}
+
+func metav1TimeFromStrfmt(value *strfmt.DateTime) *metav1.Time {
+	if value == nil {
+		return nil
+	}
+
+	return &metav1.Time{Time: time.Time(*value)}
 }
 
 func makeScyllaV1TaskStatusAnnotationValue(t *managerclient.TaskListItem) (string, error) {

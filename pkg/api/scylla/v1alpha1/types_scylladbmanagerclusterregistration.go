@@ -53,7 +53,20 @@ type ScyllaDBManagerClusterRegistrationAuthentication struct {
 	Alternator *ScyllaDBManagerClusterRegistrationAlternatorAuthentication `json:"alternator,omitempty"`
 }
 
+// +kubebuilder:validation:XValidation:rule="!has(self.certificateSecretKeyRef.optional) || !self.certificateSecretKeyRef.optional",message="certificateSecretKeyRef.optional must be false"
+// +kubebuilder:validation:XValidation:rule="!has(self.privateKeySecretKeyRef.optional) || !self.privateKeySecretKeyRef.optional",message="privateKeySecretKeyRef.optional must be false"
+type ScyllaDBManagerClusterRegistrationTLSClientCertificate struct {
+	// certificateSecretKeyRef selects a PEM client certificate from a Secret in the registration namespace.
+	// +kubebuilder:validation:Required
+	CertificateSecretKeyRef corev1.SecretKeySelector `json:"certificateSecretKeyRef"`
+	// privateKeySecretKeyRef selects the corresponding PEM private key from a Secret in the registration namespace.
+	// +kubebuilder:validation:Required
+	PrivateKeySecretKeyRef corev1.SecretKeySelector `json:"privateKeySecretKeyRef"`
+}
+
 // +kubebuilder:validation:XValidation:rule="has(self.caConfigMapKeyRef) != has(self.caSecretKeyRef)",message="exactly one of caConfigMapKeyRef or caSecretKeyRef is required"
+// +kubebuilder:validation:XValidation:rule="!has(self.caConfigMapKeyRef) || !has(self.caConfigMapKeyRef.optional) || !self.caConfigMapKeyRef.optional",message="caConfigMapKeyRef.optional must be false"
+// +kubebuilder:validation:XValidation:rule="!has(self.caSecretKeyRef) || !has(self.caSecretKeyRef.optional) || !self.caSecretKeyRef.optional",message="caSecretKeyRef.optional must be false"
 type ScyllaDBManagerClusterRegistrationTLSConfig struct {
 	// caConfigMapKeyRef selects a PEM CA bundle from a ConfigMap in the registration namespace.
 	// Mutually exclusive with caSecretKeyRef.
@@ -66,8 +79,15 @@ type ScyllaDBManagerClusterRegistrationTLSConfig struct {
 	// serverName is the DNS name Manager must verify against the serving certificate.
 	// +kubebuilder:validation:Required
 	ServerName string `json:"serverName"`
+	// clientCertificate configures the database client identity used for mutual TLS.
+	// It is required for CQL and omitted for endpoint types that don't request client certificates.
+	// +optional
+	ClientCertificate *ScyllaDBManagerClusterRegistrationTLSClientCertificate `json:"clientCertificate,omitempty"`
 }
 
+// +kubebuilder:validation:XValidation:rule="has(self.cql) && has(self.cql.clientCertificate)",message="CQL clientCertificate is required"
+// +kubebuilder:validation:XValidation:rule="!has(self.alternator) || !has(self.alternator.clientCertificate)",message="Alternator clientCertificate is not supported"
+// +kubebuilder:validation:XValidation:rule="!has(self.agent) || !has(self.agent.clientCertificate)",message="Agent clientCertificate is not supported"
 type ScyllaDBManagerClusterRegistrationTLS struct {
 	// cql configures strict CQL server certificate verification.
 	// +kubebuilder:validation:Required
@@ -80,6 +100,8 @@ type ScyllaDBManagerClusterRegistrationTLS struct {
 	Agent *ScyllaDBManagerClusterRegistrationTLSConfig `json:"agent,omitempty"`
 }
 
+// +kubebuilder:validation:XValidation:rule="!has(self.certificateSecretKeyRef.optional) || !self.certificateSecretKeyRef.optional",message="certificateSecretKeyRef.optional must be false"
+// +kubebuilder:validation:XValidation:rule="!has(self.privateKeySecretKeyRef.optional) || !self.privateKeySecretKeyRef.optional",message="privateKeySecretKeyRef.optional must be false"
 type ScyllaDBManagerClusterRegistrationManagerAPIClientCertificate struct {
 	// certificateSecretKeyRef selects a PEM client certificate from a Secret in the registration namespace.
 	// +kubebuilder:validation:Required
@@ -90,6 +112,8 @@ type ScyllaDBManagerClusterRegistrationManagerAPIClientCertificate struct {
 }
 
 // +kubebuilder:validation:XValidation:rule="has(self.caConfigMapKeyRef) != has(self.caSecretKeyRef)",message="exactly one of caConfigMapKeyRef or caSecretKeyRef is required"
+// +kubebuilder:validation:XValidation:rule="!has(self.caConfigMapKeyRef) || !has(self.caConfigMapKeyRef.optional) || !self.caConfigMapKeyRef.optional",message="caConfigMapKeyRef.optional must be false"
+// +kubebuilder:validation:XValidation:rule="!has(self.caSecretKeyRef) || !has(self.caSecretKeyRef.optional) || !self.caSecretKeyRef.optional",message="caSecretKeyRef.optional must be false"
 type ScyllaDBManagerClusterRegistrationManagerAPI struct {
 	// url is the HTTPS base URL of the ScyllaDB Manager API.
 	// +kubebuilder:validation:Required

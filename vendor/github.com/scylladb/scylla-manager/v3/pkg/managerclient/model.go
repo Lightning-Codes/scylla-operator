@@ -42,20 +42,30 @@ type ClusterSlice []*models.Cluster
 
 // Render renders ClusterSlice in a tabular format.
 func (cs ClusterSlice) Render(w io.Writer) error {
-	t := table.New("ID", "Name", "Labels", "Port", "Credentials")
+	t := table.New("ID", "Name", "Labels", "Port", "Credentials", "TLS trust")
 	for _, c := range cs {
 		p := "default"
 		if c.Port != 0 {
 			p = fmt.Sprint(c.Port)
 		}
 		var creds []string
-		if c.Username != "" {
+		if c.CqlCredentialsSet || c.Username != "" {
 			creds = append(creds, "CQL")
 		}
-		if c.AlternatorAccessKeyID != "" {
+		if c.AlternatorCredentialsSet || c.AlternatorAccessKeyID != "" {
 			creds = append(creds, "Alternator")
 		}
-		t.AddRow(c.ID, c.Name, formatLabels(c.Labels), p, strings.Join(creds, ", "))
+		var trusts []string
+		if c.CqlCaSet {
+			trusts = append(trusts, "CQL")
+		}
+		if c.AlternatorCaSet {
+			trusts = append(trusts, "Alternator")
+		}
+		if c.AgentCaSet {
+			trusts = append(trusts, "Agent")
+		}
+		t.AddRow(c.ID, c.Name, formatLabels(c.Labels), p, strings.Join(creds, ", "), strings.Join(trusts, ", "))
 	}
 	if _, err := w.Write([]byte(t.String())); err != nil {
 		return err
@@ -129,8 +139,11 @@ func (cs ClusterStatus) Render(w io.Writer) error {
 
 		if s.AlternatorStatus != "" {
 			status := s.AlternatorStatus
-			if s.Ssl {
-				status += " SSL"
+			if s.AlternatorTLSVerified {
+				status += " TLS"
+			}
+			if s.AlternatorAuthVerified {
+				status += " AUTH"
 			}
 			apiStatuses = append(apiStatuses, fmt.Sprintf("%s (%.0fms)", status, s.AlternatorRttMs))
 		} else if cs.hasAnyAlternator() {
@@ -142,8 +155,11 @@ func (cs ClusterStatus) Render(w io.Writer) error {
 
 		if s.CqlStatus != "" {
 			status := s.CqlStatus
-			if s.Ssl {
-				status += " SSL"
+			if s.CqlTLSVerified {
+				status += " TLS"
+			}
+			if s.CqlAuthVerified {
+				status += " AUTH"
 			}
 			apiStatuses = append(apiStatuses, fmt.Sprintf("%s (%.0fms)", status, s.CqlRttMs))
 		} else {
@@ -154,7 +170,11 @@ func (cs ClusterStatus) Render(w io.Writer) error {
 		}
 
 		if s.RestStatus != "" {
-			apiStatuses = append(apiStatuses, fmt.Sprintf("%s (%.0fms)", s.RestStatus, s.RestRttMs))
+			status := s.RestStatus
+			if s.AgentTLSVerified {
+				status += " TLS"
+			}
+			apiStatuses = append(apiStatuses, fmt.Sprintf("%s (%.0fms)", status, s.RestRttMs))
 		} else {
 			apiStatuses = append(apiStatuses, "-")
 		}
@@ -382,14 +402,6 @@ Locations:
 {{- range .Location }}
   - {{ . }}
 {{- end }}
-{{ if .SkipSchema }}
-Skip Schema: snapshot won't contain schema that can be restored
-{{- end }}
-{{- if .PurgeOnly }}
-Purge only: backup task execution will only purge snapshots (according to retention policy)
-{{- end }}
-
-Backup Method: {{ .Method }}
 
 Bandwidth Limits:
 {{- if .RateLimit -}}
@@ -417,14 +429,9 @@ Upload Parallel Limits:
 {{- else }}
   - All hosts in parallel
 {{- end }}
-{{ if ne .Transfers -1 }}
-Transfers:	{{ .Transfers }}
-{{- else }}
-Transfers: defined in scylla-manager-agent.yaml config
-{{- end }}
 
 Retention Policy:
-{{ FormatRetentionPolicy .Retention .RetentionDays .RetentionLockMode .OverrideRetentionLock }}
+{{ FormatRetentionPolicy .Retention .RetentionDays }}
 `
 
 // Render implements Renderer interface.
@@ -787,7 +794,7 @@ func (rp RepairProgress) addRepairTableProgress(d *table.Table) {
 			p = FormatRepairProgress(t.TokenRanges, t.Success, t.Error)
 		}
 
-		d.AddRow(t.Keyspace, t.Table, p, FormatRepairDuration(t.DurationMs, t.TokenRanges, t.Success))
+		d.AddRow(t.Keyspace, t.Table, p, FormatMsDuration(t.DurationMs))
 	}
 }
 
@@ -800,7 +807,7 @@ func (rp RepairProgress) addRepairTableDetailedProgress(d *table.Table, t *model
 		t.Error,
 		FormatTimePointer(t.StartedAt),
 		FormatTimePointer(t.CompletedAt),
-		FormatRepairDuration(t.DurationMs, t.TokenRanges, t.Success),
+		FormatMsDuration(t.DurationMs),
 	)
 }
 
@@ -1108,8 +1115,6 @@ Datacenters:	{{ range .Dcs }}
   - {{ . }}
 {{- end }}
 {{ end -}}
-Retention Lock:
-{{ FormatRetentionLock .RetentionLockMode .OverrideRetentionLock .RetentionDays -}}
 {{ else }}Progress:	0%
 {{ end }}
 {{- if .Errors -}}
@@ -1127,7 +1132,6 @@ func (bp BackupProgress) addHeader(w io.Writer) error {
 		"FormatError":          FormatError,
 		"FormatUploadProgress": FormatUploadProgress,
 		"status":               bp.status,
-		"FormatRetentionLock":  FormatRetentionLock,
 	}).Parse(backupProgressTemplate))
 	return temp.Execute(w, bp)
 }

@@ -87,6 +87,9 @@ object
    * - type
      - string
      - type specifies the type of the task.
+   * - :ref:`validateBackup<api-scylla.scylladb.com-scylladbmanagertasks-v1alpha1-.spec.validateBackup>`
+     - object
+     - validateBackup specifies the options for a non-destructive backup validation task.
 
 .. _api-scylla.scylladb.com-scylladbmanagertasks-v1alpha1-.spec.backup:
 
@@ -139,6 +142,9 @@ object
    * - startDate
      - string
      - startDate specifies the start date of the task. It is represented in RFC3339 form and is in UTC. If not set, the task is started immediately.
+   * - timezone
+     - string
+     - timezone specifies the IANA timezone in which cron is evaluated. It can only be set together with cron. If not set, ScyllaDB Manager's default timezone is used.
    * - uploadParallel
      - array (string)
      - uploadParallel specifies a list of upload parallelism limits in the following format: `[<dc>:]<limit>`. `<dc>:` is optional and allows for specifying different limits in selected datacenters. If `<dc>:` is not set, the limit is global. For instance, `[]string{"dc1:2", "5"}` corresponds to two parallel nodes in `dc1` datacenter and five parallel nodes in the other datacenters.
@@ -200,6 +206,9 @@ object
    * - startDate
      - string
      - startDate specifies the start date of the task. It is represented in RFC3339 form and is in UTC. If not set, the task is started immediately.
+   * - timezone
+     - string
+     - timezone specifies the IANA timezone in which cron is evaluated. It can only be set together with cron. If not set, ScyllaDB Manager's default timezone is used.
 
 .. _api-scylla.scylladb.com-scylladbmanagertasks-v1alpha1-.spec.scyllaDBClusterRef:
 
@@ -229,6 +238,49 @@ object
      - string
      - name specifies the name of the resource in the same namespace.
 
+.. _api-scylla.scylladb.com-scylladbmanagertasks-v1alpha1-.spec.validateBackup:
+
+.spec.validateBackup
+^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+validateBackup specifies the options for a non-destructive backup validation task.
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - cron
+     - string
+     - cron specifies the task schedule as a cron expression. It supports the "standard" cron syntax `MIN HOUR DOM MON DOW`, as used by the Linux utility, as well as a set of non-standard macros: "@yearly", "@annually", "@monthly", "@weekly", "@daily", "@midnight", "@hourly", "@every [+-]?<duration>".
+   * - deleteOrphanedFiles
+     - boolean
+     - deleteOrphanedFiles is deliberately false-only. This task validates backups and never mutates backup storage.
+   * - location
+     - array (string)
+     - location specifies one or more backup locations in `[<dc>:]<provider>:<name>` format. Validation is limited to these locations.
+   * - numRetries
+     - integer
+     - numRetries specifies how many times a scheduled task should be retried before failing.
+   * - retryWait
+     - string
+     - retryWait specifies the initial exponential backoff duration for task retries. For instance, if set to 10 minutes, the first retry will be attempted after 10 minutes, the second after 20 minutes, the third after 40 minutes, and so on, up to the number of retries specified in `numRetries`. If not set, the default values is left to ScyllaDB Manager to decide.
+   * - startDate
+     - string
+     - startDate specifies the start date of the task. It is represented in RFC3339 form and is in UTC. If not set, the task is started immediately.
+   * - timezone
+     - string
+     - timezone specifies the IANA timezone in which cron is evaluated. It can only be set together with cron. If not set, ScyllaDB Manager's default timezone is used.
+
 .. _api-scylla.scylladb.com-scylladbmanagertasks-v1alpha1-.status:
 
 .status
@@ -253,6 +305,18 @@ object
    * - :ref:`conditions<api-scylla.scylladb.com-scylladbmanagertasks-v1alpha1-.status.conditions[]>`
      - array (object)
      - conditions hold conditions describing ScyllaDBManagerTask state.
+   * - lastError
+     - string
+     - lastError is the latest failed activation reported by ScyllaDB Manager.
+   * - lastSuccess
+     - string
+     - lastSuccess is the latest successful activation reported by ScyllaDB Manager.
+   * - managerStatus
+     - string
+     - managerStatus is the task's current scheduler status as read back from ScyllaDB Manager.
+   * - nextActivation
+     - string
+     - nextActivation is the next scheduled activation reported by ScyllaDB Manager.
    * - observedGeneration
      - integer
      - observedGeneration is the most recent generation observed for this ScyllaDBManagerTask. It corresponds to the ScyllaDBManagerTask's generation, which is updated on mutation by the API Server.

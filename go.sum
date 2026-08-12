@@ -6,6 +6,12 @@ github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c h1:udKWzYgxTojEK
 github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=
 github.com/BurntSushi/toml v1.6.0 h1:dRaEfpa2VI55EwlIW72hMRHdWouJeRF7TPYhI+AUQjk=
 github.com/BurntSushi/toml v1.6.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
+github.com/Lightning-Codes/scylla-manager/v3/pkg/managerclient v0.0.0-20260812150222-a105c67c6c6f h1:9NKF5IvzmVKGrlrgJ4tmiJ00F2Xib6ctnQF86Q45emo=
+github.com/Lightning-Codes/scylla-manager/v3/pkg/managerclient v0.0.0-20260812150222-a105c67c6c6f/go.mod h1:Dh/xjDoyYeDjoxMJbJv02z1YjYdgb/yHXb70pNgI0Gw=
+github.com/Lightning-Codes/scylla-manager/v3/pkg/util v0.0.0-20260812150222-a105c67c6c6f h1:gnb4lx6n0BD/0NbkaLaRjr/scAtQJRTMaFr+1rQf7/A=
+github.com/Lightning-Codes/scylla-manager/v3/pkg/util v0.0.0-20260812150222-a105c67c6c6f/go.mod h1:5PVjJFtbO/R3rAJtgg/HNT7FbAcj+Hfn/g39HDBIa/k=
+github.com/Lightning-Codes/scylla-manager/v3/swagger v0.0.0-20260812150222-a105c67c6c6f h1:vFcB9kTor5KWEy57XyjcDXhuyj+HSMg6x+nwaKIAlho=
+github.com/Lightning-Codes/scylla-manager/v3/swagger v0.0.0-20260812150222-a105c67c6c6f/go.mod h1:JUyR1bNef5oN9cQpolZfj2lVDYaDMVFHqyHSDA5at7g=
 github.com/MakeNowJust/heredoc v1.0.0 h1:cXCdzVdstXyiTqTvfqk9SDHpKNjxuom+DOlyEeQ4pzQ=
 github.com/MakeNowJust/heredoc v1.0.0/go.mod h1:mG5amYoWBHf8vpLOuehzbGGw0EHxpZZ6lCpQ4fNJ8LE=
 github.com/Masterminds/semver/v3 v3.5.0 h1:kQceYJfbupGfZOKZQg0kou0DgAKhzDg2NZPAwZ/2OOE=
@@ -344,12 +350,6 @@ github.com/scylladb/gocql v1.18.0 h1:bmaMHNOUJyu0GHnTsVv0RRUAquQoTtYjCL/9jTxrg9Q
 github.com/scylladb/gocql v1.18.0/go.mod h1:PZU+XJQ3fDymccIlTacmTdO+aTGGDSgXF1hw+yULUMk=
 github.com/scylladb/gocqlx/v3 v3.0.4 h1:37rMVFEUlsGGNYB7OLR7991KwBYR2WA5TU7wtduClas=
 github.com/scylladb/gocqlx/v3 v3.0.4/go.mod h1:3vBkGO+HRh/BYypLWXzurQ45u1BAO0VGBhg5VgperPY=
-github.com/scylladb/scylla-manager/v3/pkg/managerclient v0.0.0-20260806143840-9acf01e5802e h1:80wAfEnOs7fJJZyXQVHmY9eV3QVLlsmqoVsVhIg0W9s=
-github.com/scylladb/scylla-manager/v3/pkg/managerclient v0.0.0-20260806143840-9acf01e5802e/go.mod h1:lv56TuEDyfulKRwRx9zWzqfjJjx/G2enx7BMNXLBdlA=
-github.com/scylladb/scylla-manager/v3/pkg/util v0.0.0-20260806143840-9acf01e5802e h1:Bz8BJGPy8zphf+yl/Av1oRgq9QwyPp8L34xm+KL1f2U=
-github.com/scylladb/scylla-manager/v3/pkg/util v0.0.0-20260806143840-9acf01e5802e/go.mod h1:7zqntmfPEpRjCimgliBzWgA/MJAiKQnI8eOxGjppBQM=
-github.com/scylladb/scylla-manager/v3/swagger v0.0.0-20260806143840-9acf01e5802e h1:Nf/C6TtYIdkY/mL+WVA56thBE4J0/wsDZ0tC7y22SSs=
-github.com/scylladb/scylla-manager/v3/swagger v0.0.0-20260806143840-9acf01e5802e/go.mod h1:sK9Kr+7Gnx/+f4R23X4B8Ct1jO9F8hNIbG9qw8/YR5U=
 github.com/scylladb/scylladb-swagger-go-client v0.2.0 h1:WRzrS07NSQSwxkKz67UnzssOEtRb2Ri4yUEi/xOMLQ0=
 github.com/scylladb/scylladb-swagger-go-client v0.2.0/go.mod h1:64059ZeUsLRLVJoTh7AT5elhBwyJudXKGHKxXerSoBo=
 github.com/scylladb/termtables v0.0.0-20191203121021-c4c0b6d42ff4 h1:8qmTC5ByIXO3GP/IzBkxcZ/99VITvnIETDhdFz/om7A=

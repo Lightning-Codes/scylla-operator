@@ -59,6 +59,10 @@ func (smtc *Controller) sync(ctx context.Context, key string) error {
 		return smtc.updateStatus(ctx, smt, status)
 	}
 
+	// Kubernetes and registration informer events remain the primary trigger. Manager has
+	// no watch API, so a bounded safety reconciliation is also required for external drift.
+	smtc.queue.AddAfter(key, safetyRequeuePeriod)
+
 	if !smtc.hasFinalizer(smt.GetFinalizers()) {
 		err = smtc.addFinalizer(ctx, smt)
 		if err != nil {

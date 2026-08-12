@@ -113,6 +113,11 @@ spec:
                         If not set, the task is started immediately.
                       format: date-time
                       type: string
+                    timezone:
+                      description: |-
+                        timezone specifies the IANA timezone in which cron is evaluated.
+                        It can only be set together with cron. If not set, ScyllaDB Manager's default timezone is used.
+                      type: string
                     uploadParallel:
                       description: |-
                         uploadParallel specifies a list of upload parallelism limits in the following format: `[<dc>:]<limit>`.
@@ -197,6 +202,11 @@ spec:
                         If not set, the task is started immediately.
                       format: date-time
                       type: string
+                    timezone:
+                      description: |-
+                        timezone specifies the IANA timezone in which cron is evaluated.
+                        It can only be set together with cron. If not set, ScyllaDB Manager's default timezone is used.
+                      type: string
                   type: object
                 scyllaDBClusterRef:
                   description: |-
@@ -221,6 +231,50 @@ spec:
                 type:
                   description: type specifies the type of the task.
                   type: string
+                validateBackup:
+                  description: validateBackup specifies the options for a non-destructive backup validation task.
+                  properties:
+                    cron:
+                      description: |-
+                        cron specifies the task schedule as a cron expression.
+                        It supports the "standard" cron syntax `MIN HOUR DOM MON DOW`, as used by the Linux utility, as well as a set of non-standard macros: "@yearly", "@annually", "@monthly", "@weekly", "@daily", "@midnight", "@hourly", "@every [+-]?<duration>".
+                      type: string
+                    deleteOrphanedFiles:
+                      default: false
+                      description: deleteOrphanedFiles is deliberately false-only. This task validates backups and never mutates backup storage.
+                      enum:
+                        - false
+                      type: boolean
+                    location:
+                      description: |-
+                        location specifies one or more backup locations in `[<dc>:]<provider>:<name>` format.
+                        Validation is limited to these locations.
+                      items:
+                        type: string
+                      type: array
+                    numRetries:
+                      description: numRetries specifies how many times a scheduled task should be retried before failing.
+                      format: int64
+                      type: integer
+                    retryWait:
+                      description: |-
+                        retryWait specifies the initial exponential backoff duration for task retries.
+                        For instance, if set to 10 minutes, the first retry will be attempted after 10 minutes, the second after 20 minutes, the third after 40 minutes, and so on, up to the number of retries specified in `numRetries`.
+                        If not set, the default values is left to ScyllaDB Manager to decide.
+                      type: string
+                    startDate:
+                      description: |-
+                        startDate specifies the start date of the task.
+                        It is represented in RFC3339 form and is in UTC.
+                        If not set, the task is started immediately.
+                      format: date-time
+                      type: string
+                    timezone:
+                      description: |-
+                        timezone specifies the IANA timezone in which cron is evaluated.
+                        It can only be set together with cron. If not set, ScyllaDB Manager's default timezone is used.
+                      type: string
+                  type: object
               type: object
             status:
               description: status reflects the observed state of ScyllaDBManagerTask.
@@ -281,6 +335,21 @@ spec:
                       - type
                     type: object
                   type: array
+                lastError:
+                  description: lastError is the latest failed activation reported by ScyllaDB Manager.
+                  format: date-time
+                  type: string
+                lastSuccess:
+                  description: lastSuccess is the latest successful activation reported by ScyllaDB Manager.
+                  format: date-time
+                  type: string
+                managerStatus:
+                  description: managerStatus is the task's current scheduler status as read back from ScyllaDB Manager.
+                  type: string
+                nextActivation:
+                  description: nextActivation is the next scheduled activation reported by ScyllaDB Manager.
+                  format: date-time
+                  type: string
                 observedGeneration:
                   description: |-
                     observedGeneration is the most recent generation observed for this ScyllaDBManagerTask. It corresponds to the

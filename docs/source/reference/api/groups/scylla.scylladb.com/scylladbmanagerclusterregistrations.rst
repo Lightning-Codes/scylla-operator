@@ -571,6 +571,9 @@ object
    * - :ref:`caSecretKeyRef<api-scylla.scylladb.com-scylladbmanagerclusterregistrations-v1alpha1-.spec.tls.agent.caSecretKeyRef>`
      - object
      - caSecretKeyRef selects a PEM CA bundle from a Secret in the registration namespace. Mutually exclusive with caConfigMapKeyRef.
+   * - :ref:`clientCertificate<api-scylla.scylladb.com-scylladbmanagerclusterregistrations-v1alpha1-.spec.tls.agent.clientCertificate>`
+     - object
+     - clientCertificate configures the database client identity used for mutual TLS. It is required for CQL and omitted for endpoint types that don't request client certificates.
    * - serverName
      - string
      - serverName is the DNS name Manager must verify against the serving certificate.
@@ -637,6 +640,96 @@ object
      - boolean
      - Specify whether the Secret or its key must be defined
 
+.. _api-scylla.scylladb.com-scylladbmanagerclusterregistrations-v1alpha1-.spec.tls.agent.clientCertificate:
+
+.spec.tls.agent.clientCertificate
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+clientCertificate configures the database client identity used for mutual TLS. It is required for CQL and omitted for endpoint types that don't request client certificates.
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - :ref:`certificateSecretKeyRef<api-scylla.scylladb.com-scylladbmanagerclusterregistrations-v1alpha1-.spec.tls.agent.clientCertificate.certificateSecretKeyRef>`
+     - object
+     - certificateSecretKeyRef selects a PEM client certificate from a Secret in the registration namespace.
+   * - :ref:`privateKeySecretKeyRef<api-scylla.scylladb.com-scylladbmanagerclusterregistrations-v1alpha1-.spec.tls.agent.clientCertificate.privateKeySecretKeyRef>`
+     - object
+     - privateKeySecretKeyRef selects the corresponding PEM private key from a Secret in the registration namespace.
+
+.. _api-scylla.scylladb.com-scylladbmanagerclusterregistrations-v1alpha1-.spec.tls.agent.clientCertificate.certificateSecretKeyRef:
+
+.spec.tls.agent.clientCertificate.certificateSecretKeyRef
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+certificateSecretKeyRef selects a PEM client certificate from a Secret in the registration namespace.
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - key
+     - string
+     - The key of the secret to select from.  Must be a valid secret key.
+   * - name
+     - string
+     - Name of the referent. This field is effectively required, but due to backwards compatibility is allowed to be empty. Instances of this type with an empty value here are almost certainly wrong. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+   * - optional
+     - boolean
+     - Specify whether the Secret or its key must be defined
+
+.. _api-scylla.scylladb.com-scylladbmanagerclusterregistrations-v1alpha1-.spec.tls.agent.clientCertificate.privateKeySecretKeyRef:
+
+.spec.tls.agent.clientCertificate.privateKeySecretKeyRef
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+privateKeySecretKeyRef selects the corresponding PEM private key from a Secret in the registration namespace.
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - key
+     - string
+     - The key of the secret to select from.  Must be a valid secret key.
+   * - name
+     - string
+     - Name of the referent. This field is effectively required, but due to backwards compatibility is allowed to be empty. Instances of this type with an empty value here are almost certainly wrong. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+   * - optional
+     - boolean
+     - Specify whether the Secret or its key must be defined
+
 .. _api-scylla.scylladb.com-scylladbmanagerclusterregistrations-v1alpha1-.spec.tls.alternator:
 
 .spec.tls.alternator
@@ -664,6 +757,9 @@ object
    * - :ref:`caSecretKeyRef<api-scylla.scylladb.com-scylladbmanagerclusterregistrations-v1alpha1-.spec.tls.alternator.caSecretKeyRef>`
      - object
      - caSecretKeyRef selects a PEM CA bundle from a Secret in the registration namespace. Mutually exclusive with caConfigMapKeyRef.
+   * - :ref:`clientCertificate<api-scylla.scylladb.com-scylladbmanagerclusterregistrations-v1alpha1-.spec.tls.alternator.clientCertificate>`
+     - object
+     - clientCertificate configures the database client identity used for mutual TLS. It is required for CQL and omitted for endpoint types that don't request client certificates.
    * - serverName
      - string
      - serverName is the DNS name Manager must verify against the serving certificate.
@@ -730,6 +826,96 @@ object
      - boolean
      - Specify whether the Secret or its key must be defined
 
+.. _api-scylla.scylladb.com-scylladbmanagerclusterregistrations-v1alpha1-.spec.tls.alternator.clientCertificate:
+
+.spec.tls.alternator.clientCertificate
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+clientCertificate configures the database client identity used for mutual TLS. It is required for CQL and omitted for endpoint types that don't request client certificates.
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - :ref:`certificateSecretKeyRef<api-scylla.scylladb.com-scylladbmanagerclusterregistrations-v1alpha1-.spec.tls.alternator.clientCertificate.certificateSecretKeyRef>`
+     - object
+     - certificateSecretKeyRef selects a PEM client certificate from a Secret in the registration namespace.
+   * - :ref:`privateKeySecretKeyRef<api-scylla.scylladb.com-scylladbmanagerclusterregistrations-v1alpha1-.spec.tls.alternator.clientCertificate.privateKeySecretKeyRef>`
+     - object
+     - privateKeySecretKeyRef selects the corresponding PEM private key from a Secret in the registration namespace.
+
+.. _api-scylla.scylladb.com-scylladbmanagerclusterregistrations-v1alpha1-.spec.tls.alternator.clientCertificate.certificateSecretKeyRef:
+
+.spec.tls.alternator.clientCertificate.certificateSecretKeyRef
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+certificateSecretKeyRef selects a PEM client certificate from a Secret in the registration namespace.
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - key
+     - string
+     - The key of the secret to select from.  Must be a valid secret key.
+   * - name
+     - string
+     - Name of the referent. This field is effectively required, but due to backwards compatibility is allowed to be empty. Instances of this type with an empty value here are almost certainly wrong. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+   * - optional
+     - boolean
+     - Specify whether the Secret or its key must be defined
+
+.. _api-scylla.scylladb.com-scylladbmanagerclusterregistrations-v1alpha1-.spec.tls.alternator.clientCertificate.privateKeySecretKeyRef:
+
+.spec.tls.alternator.clientCertificate.privateKeySecretKeyRef
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+privateKeySecretKeyRef selects the corresponding PEM private key from a Secret in the registration namespace.
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - key
+     - string
+     - The key of the secret to select from.  Must be a valid secret key.
+   * - name
+     - string
+     - Name of the referent. This field is effectively required, but due to backwards compatibility is allowed to be empty. Instances of this type with an empty value here are almost certainly wrong. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+   * - optional
+     - boolean
+     - Specify whether the Secret or its key must be defined
+
 .. _api-scylla.scylladb.com-scylladbmanagerclusterregistrations-v1alpha1-.spec.tls.cql:
 
 .spec.tls.cql
@@ -757,6 +943,9 @@ object
    * - :ref:`caSecretKeyRef<api-scylla.scylladb.com-scylladbmanagerclusterregistrations-v1alpha1-.spec.tls.cql.caSecretKeyRef>`
      - object
      - caSecretKeyRef selects a PEM CA bundle from a Secret in the registration namespace. Mutually exclusive with caConfigMapKeyRef.
+   * - :ref:`clientCertificate<api-scylla.scylladb.com-scylladbmanagerclusterregistrations-v1alpha1-.spec.tls.cql.clientCertificate>`
+     - object
+     - clientCertificate configures the database client identity used for mutual TLS. It is required for CQL and omitted for endpoint types that don't request client certificates.
    * - serverName
      - string
      - serverName is the DNS name Manager must verify against the serving certificate.
@@ -800,6 +989,96 @@ object
 Description
 """""""""""
 caSecretKeyRef selects a PEM CA bundle from a Secret in the registration namespace. Mutually exclusive with caConfigMapKeyRef.
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - key
+     - string
+     - The key of the secret to select from.  Must be a valid secret key.
+   * - name
+     - string
+     - Name of the referent. This field is effectively required, but due to backwards compatibility is allowed to be empty. Instances of this type with an empty value here are almost certainly wrong. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+   * - optional
+     - boolean
+     - Specify whether the Secret or its key must be defined
+
+.. _api-scylla.scylladb.com-scylladbmanagerclusterregistrations-v1alpha1-.spec.tls.cql.clientCertificate:
+
+.spec.tls.cql.clientCertificate
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+clientCertificate configures the database client identity used for mutual TLS. It is required for CQL and omitted for endpoint types that don't request client certificates.
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - :ref:`certificateSecretKeyRef<api-scylla.scylladb.com-scylladbmanagerclusterregistrations-v1alpha1-.spec.tls.cql.clientCertificate.certificateSecretKeyRef>`
+     - object
+     - certificateSecretKeyRef selects a PEM client certificate from a Secret in the registration namespace.
+   * - :ref:`privateKeySecretKeyRef<api-scylla.scylladb.com-scylladbmanagerclusterregistrations-v1alpha1-.spec.tls.cql.clientCertificate.privateKeySecretKeyRef>`
+     - object
+     - privateKeySecretKeyRef selects the corresponding PEM private key from a Secret in the registration namespace.
+
+.. _api-scylla.scylladb.com-scylladbmanagerclusterregistrations-v1alpha1-.spec.tls.cql.clientCertificate.certificateSecretKeyRef:
+
+.spec.tls.cql.clientCertificate.certificateSecretKeyRef
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+certificateSecretKeyRef selects a PEM client certificate from a Secret in the registration namespace.
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - key
+     - string
+     - The key of the secret to select from.  Must be a valid secret key.
+   * - name
+     - string
+     - Name of the referent. This field is effectively required, but due to backwards compatibility is allowed to be empty. Instances of this type with an empty value here are almost certainly wrong. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+   * - optional
+     - boolean
+     - Specify whether the Secret or its key must be defined
+
+.. _api-scylla.scylladb.com-scylladbmanagerclusterregistrations-v1alpha1-.spec.tls.cql.clientCertificate.privateKeySecretKeyRef:
+
+.spec.tls.cql.clientCertificate.privateKeySecretKeyRef
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+privateKeySecretKeyRef selects the corresponding PEM private key from a Secret in the registration namespace.
 
 Type
 """"

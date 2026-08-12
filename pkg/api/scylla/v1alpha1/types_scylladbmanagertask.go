@@ -10,8 +10,9 @@ import (
 type ScyllaDBManagerTaskType string
 
 const (
-	ScyllaDBManagerTaskTypeBackup ScyllaDBManagerTaskType = "Backup"
-	ScyllaDBManagerTaskTypeRepair ScyllaDBManagerTaskType = "Repair"
+	ScyllaDBManagerTaskTypeBackup         ScyllaDBManagerTaskType = "Backup"
+	ScyllaDBManagerTaskTypeRepair         ScyllaDBManagerTaskType = "Repair"
+	ScyllaDBManagerTaskTypeValidateBackup ScyllaDBManagerTaskType = "ValidateBackup"
 )
 
 type ScyllaDBManagerTaskSchedule struct {
@@ -19,6 +20,11 @@ type ScyllaDBManagerTaskSchedule struct {
 	// It supports the "standard" cron syntax `MIN HOUR DOM MON DOW`, as used by the Linux utility, as well as a set of non-standard macros: "@yearly", "@annually", "@monthly", "@weekly", "@daily", "@midnight", "@hourly", "@every [+-]?<duration>".
 	// +optional
 	Cron *string `json:"cron,omitempty"`
+
+	// timezone specifies the IANA timezone in which cron is evaluated.
+	// It can only be set together with cron. If not set, ScyllaDB Manager's default timezone is used.
+	// +optional
+	Timezone *string `json:"timezone,omitempty"`
 
 	// numRetries specifies how many times a scheduled task should be retried before failing.
 	// +optional
@@ -35,6 +41,21 @@ type ScyllaDBManagerTaskSchedule struct {
 	// If not set, the task is started immediately.
 	// +optional
 	StartDate *metav1.Time `json:"startDate,omitempty"`
+}
+
+type ScyllaDBManagerValidateBackupTaskOptions struct {
+	// schedule specifies the schedule on which backup validation is run.
+	ScyllaDBManagerTaskSchedule `json:",inline"`
+
+	// location specifies one or more backup locations in `[<dc>:]<provider>:<name>` format.
+	// Validation is limited to these locations.
+	Location []string `json:"location"`
+
+	// deleteOrphanedFiles is deliberately false-only. This task validates backups and never mutates backup storage.
+	// +optional
+	// +kubebuilder:default=false
+	// +kubebuilder:validation:Enum=false
+	DeleteOrphanedFiles *bool `json:"deleteOrphanedFiles,omitempty"`
 }
 
 type ScyllaDBManagerBackupTaskOptions struct {
@@ -143,6 +164,10 @@ type ScyllaDBManagerTaskSpec struct {
 	// repair specifies the options for a repair task.
 	// +optional
 	Repair *ScyllaDBManagerRepairTaskOptions `json:"repair,omitempty"`
+
+	// validateBackup specifies the options for a non-destructive backup validation task.
+	// +optional
+	ValidateBackup *ScyllaDBManagerValidateBackupTaskOptions `json:"validateBackup,omitempty"`
 }
 
 type ScyllaDBManagerTaskStatus struct {
@@ -159,6 +184,22 @@ type ScyllaDBManagerTaskStatus struct {
 	// It can be used to identify the task when interacting directly with ScyllaDB Manager.
 	// +optional
 	TaskID *string `json:"taskID,omitempty"`
+
+	// managerStatus is the task's current scheduler status as read back from ScyllaDB Manager.
+	// +optional
+	ManagerStatus *string `json:"managerStatus,omitempty"`
+
+	// nextActivation is the next scheduled activation reported by ScyllaDB Manager.
+	// +optional
+	NextActivation *metav1.Time `json:"nextActivation,omitempty"`
+
+	// lastSuccess is the latest successful activation reported by ScyllaDB Manager.
+	// +optional
+	LastSuccess *metav1.Time `json:"lastSuccess,omitempty"`
+
+	// lastError is the latest failed activation reported by ScyllaDB Manager.
+	// +optional
+	LastError *metav1.Time `json:"lastError,omitempty"`
 }
 
 // +kubebuilder:object:root=true

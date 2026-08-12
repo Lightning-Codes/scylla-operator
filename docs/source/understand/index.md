@@ -53,7 +53,7 @@ Namespaced resources are scoped to a Kubernetes namespace and can be managed by 
 |---|---|---|
 | `ScyllaCluster` | `v1` (stable) | Defines a single-datacenter ScyllaDB cluster. The primary resource for most deployments. |
 | `ScyllaDBMonitoring` | `v1alpha1` | Defines a monitoring stack (Prometheus + Grafana) for ScyllaDB. See [Set up monitoring](monitoring.md). |
-| `ScyllaDBManagerTask` | `v1alpha1` | Defines a backup or repair task managed by ScyllaDB Manager. |
+| `ScyllaDBManagerTask` | `v1alpha1` | Defines a backup, repair, or non-destructive backup-validation task managed by ScyllaDB Manager. |
 
 :::{tip}
 You can discover the available resources in your cluster by running:
@@ -81,7 +81,7 @@ The controller manager runs the following controllers:
 | OrphanedPV | Detects and cleans up PersistentVolumes that become orphaned when ScyllaDB nodes are removed. |
 | ScyllaDBManager | Coordinates global ScyllaDB Manager state across all clusters. |
 | ScyllaDBManagerClusterRegistration | Registers ScyllaDB clusters with ScyllaDB Manager. |
-| ScyllaDBManagerTask | Reconciles backup and repair task definitions with ScyllaDB Manager. |
+| ScyllaDBManagerTask | Reconciles backup, repair, and non-destructive backup-validation task definitions with ScyllaDB Manager. |
 
 ### Experimental controllers
 

@@ -55,7 +55,7 @@ The Operator provides the following custom resources:
 | `NodeConfig` | Cluster | Node-level disk setup, RAID, filesystem, and performance tuning |
 | `ScyllaOperatorConfig` | Cluster | Global Operator configuration (images, cluster domain) |
 | `ScyllaDBMonitoring` | Namespaced | Monitoring stack (Prometheus + Grafana) for ScyllaDB |
-| `ScyllaDBManagerTask` | Namespaced | Backup or repair task managed by ScyllaDB Manager |
+| `ScyllaDBManagerTask` | Namespaced | Backup, repair, or non-destructive backup-validation task managed by ScyllaDB Manager |
 
 The Operator also uses several internal CRD types under the hood to orchestrate operations such as datacenter management, Manager cluster registration, and bootstrap synchronisation. These are not intended for direct user interaction.
 

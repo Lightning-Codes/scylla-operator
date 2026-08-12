@@ -1,7 +1,7 @@
 # ScyllaDB Manager
 
-[ScyllaDB Manager](https://manager.docs.scylladb.com/) is a companion service that provides scheduled repairs and backups for ScyllaDB clusters.
-ScyllaDB Operator integrates with Manager so that you can define repair and backup tasks declaratively in your cluster spec, without interacting with Manager directly.
+[ScyllaDB Manager](https://manager.docs.scylladb.com/) is a companion service that provides scheduled repairs, backups, and backup validation for ScyllaDB clusters.
+ScyllaDB Operator integrates with Manager so that you can define repair, backup, and non-destructive backup-validation tasks declaratively, without interacting with Manager directly.
 
 ## Deployment model
 
@@ -49,12 +49,38 @@ spec:
 
 The ScyllaCluster controller translates each entry into a `ScyllaDBManagerTask` resource in the same namespace.
 
+Non-destructive validation is declared directly as a `ScyllaDBManagerTask`. The canonical resource name also becomes the Manager task name:
+
+```yaml
+apiVersion: scylla.scylladb.com/v1alpha1
+kind: ScyllaDBManagerTask
+metadata:
+  name: weekly-backup-validation
+spec:
+  scyllaDBClusterRef:
+    kind: ScyllaCluster
+    name: my-cluster
+  type: ValidateBackup
+  validateBackup:
+    cron: "0 3 * * SUN"
+    timezone: America/Vancouver
+    startDate: "2026-08-16T10:00:00Z"
+    numRetries: 3
+    retryWait: 10m
+    location:
+      - s3:my-bucket
+    deleteOrphanedFiles: false
+```
+
+`deleteOrphanedFiles` defaults to `false`, accepts no other value, and the controller always sends `delete_orphaned_files=false` to Manager. Validation therefore cannot delete backup objects. The controller adopts a sole, same-named ownerless task only when its existing properties prove it is non-destructive; ambiguous or destructive collisions fail closed.
+
 ### Reconciliation flow
 
 1. The Operator creates an internal **`ScyllaDBManagerClusterRegistration`** resource to register the cluster with Manager.
 2. The **ScyllaDBManagerClusterRegistration controller** calls the Manager REST API to register the cluster and stores the resulting cluster ID in its status.
-3. The **ScyllaDBManagerTask controller** reads the registration, then creates, updates, or deletes tasks in Manager via its REST API.
-4. Task statuses (run history, next run time, errors) are propagated back to the `ScyllaDBManagerTask` status and to the `.status.backups` and `.status.repairs` fields on the `ScyllaCluster`.
+3. The **ScyllaDBManagerTask controller** reads the verified registration, then adopts, creates, updates, or deletes owned tasks in Manager via its REST API.
+4. Manager task ID, scheduler status, next activation, last success, and last error are read back into `ScyllaDBManagerTask.status`. Backup and repair compatibility status is also projected into the corresponding `ScyllaCluster` status fields.
+5. Kubernetes and registration events trigger reconciliation immediately. A bounded safety reconciliation detects out-of-band Manager drift or deletion even when no Kubernetes event occurs.
 
 ## Disabling Manager integration
 
@@ -117,4 +143,4 @@ Every `ScyllaCluster` is provisioned with a unique, randomly generated auth toke
 
 - **Restore** is not yet available through the Operator's declarative API. To restore from a Manager backup, you must exec into the Manager pod and use `sctool` directly. See [Back up and restore](../operate/back-up-and-restore.md).
 - There is one global Manager instance per Kubernetes cluster. Multi-tenancy isolation between clusters sharing the same Manager is limited to auth tokens.
-- Manager functionality beyond backup and repair (e.g., healthcheck configuration) is not yet exposed through CRDs.
+- Manager functionality beyond backup, repair, and non-destructive backup validation (e.g., healthcheck configuration) is not yet exposed through CRDs.

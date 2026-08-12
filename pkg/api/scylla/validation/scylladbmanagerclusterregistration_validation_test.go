@@ -11,6 +11,7 @@ import (
 	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/naming"
+	"github.com/scylladb/scylla-operator/pkg/pointer"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -349,6 +350,44 @@ func TestValidateScyllaDBManagerClusterRegistrationCASelectors(t *testing.T) {
 	}
 }
 
+func TestValidateScyllaDBManagerClusterRegistrationCQLClientCertificate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		mutate        func(*scyllav1alpha1.ScyllaDBManagerClusterRegistration)
+		expectedField string
+	}{
+		{
+			name: "CQL client certificate missing",
+			mutate: func(smcr *scyllav1alpha1.ScyllaDBManagerClusterRegistration) {
+				smcr.Spec.TLS.CQL.ClientCertificate = nil
+			},
+			expectedField: "spec.tls.cql.clientCertificate",
+		},
+		{
+			name: "CQL client certificate selector may not be optional",
+			mutate: func(smcr *scyllav1alpha1.ScyllaDBManagerClusterRegistration) {
+				smcr.Spec.TLS.CQL.ClientCertificate.CertificateSecretKeyRef.Optional = pointer.Ptr(true)
+			},
+			expectedField: "spec.tls.cql.clientCertificate.certificateSecretKeyRef.optional",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			smcr := newValidScyllaDBManagerClusterRegistration()
+			tc.mutate(smcr)
+			errs := ValidateScyllaDBManagerClusterRegistration(smcr)
+			if len(errs) != 1 || errs[0].Field != tc.expectedField {
+				t.Fatalf("expected one validation error for %q, got %v", tc.expectedField, errs)
+			}
+		})
+	}
+}
+
 func newValidScyllaDBManagerClusterRegistration() *scyllav1alpha1.ScyllaDBManagerClusterRegistration {
 	return &scyllav1alpha1.ScyllaDBManagerClusterRegistration{
 		ObjectMeta: metav1.ObjectMeta{
@@ -400,6 +439,16 @@ func newValidScyllaDBManagerClusterRegistration() *scyllav1alpha1.ScyllaDBManage
 						Key:                  "ca-bundle.crt",
 					},
 					ServerName: "basic-client.default.svc",
+					ClientCertificate: &scyllav1alpha1.ScyllaDBManagerClusterRegistrationTLSClientCertificate{
+						CertificateSecretKeyRef: corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{Name: "database-client-tls"},
+							Key:                  corev1.TLSCertKey,
+						},
+						PrivateKeySecretKeyRef: corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{Name: "database-client-tls"},
+							Key:                  corev1.TLSPrivateKeyKey,
+						},
+					},
 				},
 				Agent: &scyllav1alpha1.ScyllaDBManagerClusterRegistrationTLSConfig{
 					CAConfigMapKeyRef: &corev1.ConfigMapKeySelector{
@@ -441,15 +490,51 @@ func TestScyllaDBManagerClusterRegistrationCRDAdmitsStableScyllaClusterKind(t *t
 	if wantRequired := []string{"authentication", "managerAPI", "scyllaDBClusterRef", "tls"}; !reflect.DeepEqual(specSchema.Required, wantRequired) {
 		t.Fatalf("generated registration spec does not require the secure connection contract: expected %v, got %v", wantRequired, specSchema.Required)
 	}
+	hasXValidation := func(schema apiextensionsv1.JSONSchemaProps, rule string) bool {
+		for _, validation := range schema.XValidations {
+			if validation.Rule == rule {
+				return true
+			}
+		}
+		return false
+	}
 	const exactlyOneCARule = "has(self.caConfigMapKeyRef) != has(self.caSecretKeyRef)"
 	managerAPISchema := specSchema.Properties["managerAPI"]
-	if len(managerAPISchema.XValidations) != 1 || managerAPISchema.XValidations[0].Rule != exactlyOneCARule {
+	if !hasXValidation(managerAPISchema, exactlyOneCARule) {
 		t.Fatalf("generated Manager API schema does not enforce exactly one CA selector: %#v", managerAPISchema.XValidations)
 	}
 	tlsSchema := specSchema.Properties["tls"]
+	const cqlClientCertificateRule = "has(self.cql) && has(self.cql.clientCertificate)"
+	if !hasXValidation(tlsSchema, cqlClientCertificateRule) {
+		t.Fatalf("generated TLS schema does not require the CQL client certificate: %#v", tlsSchema.XValidations)
+	}
+	for _, rule := range []string{
+		"!has(self.alternator) || !has(self.alternator.clientCertificate)",
+		"!has(self.agent) || !has(self.agent.clientCertificate)",
+	} {
+		if !hasXValidation(tlsSchema, rule) {
+			t.Fatalf("generated TLS schema does not reject unsupported endpoint client certificates: missing %q in %#v", rule, tlsSchema.XValidations)
+		}
+	}
+	cqlSchema := tlsSchema.Properties["cql"]
+	cqlClientCertificateSchema, hasCQLClientCertificate := cqlSchema.Properties["clientCertificate"]
+	if !reflect.DeepEqual(cqlSchema.Required, []string{"serverName"}) || !hasCQLClientCertificate {
+		t.Fatalf("generated CQL TLS schema does not admit the required client certificate contract: %#v", cqlSchema)
+	}
+	if wantRequired := []string{"certificateSecretKeyRef", "privateKeySecretKeyRef"}; !reflect.DeepEqual(cqlClientCertificateSchema.Required, wantRequired) {
+		t.Fatalf("generated CQL client certificate schema does not require both Secret selectors: expected %v, got %v", wantRequired, cqlClientCertificateSchema.Required)
+	}
+	for _, rule := range []string{
+		"!has(self.certificateSecretKeyRef.optional) || !self.certificateSecretKeyRef.optional",
+		"!has(self.privateKeySecretKeyRef.optional) || !self.privateKeySecretKeyRef.optional",
+	} {
+		if !hasXValidation(cqlClientCertificateSchema, rule) {
+			t.Fatalf("generated CQL client certificate schema does not reject optional selectors: missing %q in %#v", rule, cqlClientCertificateSchema.XValidations)
+		}
+	}
 	for _, endpoint := range []string{"cql", "alternator", "agent"} {
 		endpointSchema := tlsSchema.Properties[endpoint]
-		if len(endpointSchema.XValidations) != 1 || endpointSchema.XValidations[0].Rule != exactlyOneCARule {
+		if !hasXValidation(endpointSchema, exactlyOneCARule) {
 			t.Fatalf("generated %s TLS schema does not enforce exactly one CA selector: %#v", endpoint, endpointSchema.XValidations)
 		}
 	}

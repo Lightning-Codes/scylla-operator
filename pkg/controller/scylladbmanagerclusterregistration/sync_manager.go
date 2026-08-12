@@ -27,6 +27,8 @@ type resolvedScyllaDBManagerClusterConnection struct {
 	AlternatorAccessKeyID     string
 	AlternatorSecretAccessKey string
 	CQLCA                     []byte
+	CQLClientCertificate      []byte
+	CQLClientPrivateKey       []byte
 	AlternatorCA              []byte
 	AgentCA                   []byte
 	Revision                  string
@@ -57,14 +59,13 @@ func (smcrc *Controller) syncManager(
 ) ([]metav1.Condition, error) {
 	var progressingConditions []metav1.Condition
 
-	setManagerAPIConnectionVerified(status, smcr, metav1.ConditionFalse, "AwaitingManagerAPIVerification", "Awaiting a verified mutual-TLS connection to ScyllaDB Manager.")
-	setDatabaseConnectionVerified(status, smcr, metav1.ConditionFalse, "AwaitingDatabaseConnectionVerification", "Awaiting Manager verification of all configured database connections.")
-
 	host, authTokenSecretName, progressingCondition, err := smcrc.registrationConnectionTarget(smcr)
 	if err != nil {
+		setConnectionVerificationUnavailable(status, smcr, "ScyllaDBConnectionTargetResolutionFailed", "The ScyllaDB connection target could not be resolved.")
 		return progressingConditions, err
 	}
 	if progressingCondition != nil {
+		setConnectionVerificationUnavailable(status, smcr, "AwaitingScyllaDBConnectionTarget", "Awaiting the referenced ScyllaDB cluster to become available.")
 		progressingConditions = append(progressingConditions, *progressingCondition)
 		return progressingConditions, nil
 	}
@@ -72,6 +73,7 @@ func (smcrc *Controller) syncManager(
 	connection, err := smcrc.resolveRegistrationConnection(smcr, host, authTokenSecretName)
 	if err != nil {
 		status.ConnectionRevision = nil
+		setConnectionVerificationUnavailable(status, smcr, "ConnectionMaterialResolutionFailed", "Required connection material could not be resolved.")
 		return progressingConditions, fmt.Errorf("can't resolve connection material: %w", err)
 	}
 	status.ConnectionRevision = &connection.Revision
@@ -86,16 +88,19 @@ func (smcrc *Controller) syncManager(
 
 	managerClient, err := controllerhelpers.GetSecureScyllaDBManagerClient(ctx, smcrc.kubeClient, smcr)
 	if err != nil {
+		setConnectionVerificationUnavailable(status, smcr, "ManagerAPITLSConfigurationFailed", "The verified Manager API client could not be configured.")
 		return progressingConditions, fmt.Errorf("can't get verified Manager API client: %w", err)
 	}
 
 	managerCluster, found, err := getScyllaDBManagerCluster(ctx, smcr, managerClient)
 	if err != nil {
+		setConnectionVerificationUnavailable(status, smcr, "ManagerAPIRequestFailed", "The verified Manager API request failed.")
 		return progressingConditions, fmt.Errorf("can't get ScyllaDB Manager cluster: %w", err)
 	}
 	setManagerAPIConnectionVerified(status, smcr, metav1.ConditionTrue, "VerifiedManagerAPIConnection", "Connected to ScyllaDB Manager using verified mutual TLS.")
 
 	if !found {
+		setDatabaseConnectionVerified(status, smcr, metav1.ConditionFalse, "AwaitingDatabaseConnectionVerification", "Awaiting Manager verification of all configured database connections.")
 		klog.V(4).InfoS("Creating ScyllaDB Manager cluster.", "ScyllaDBManagerClusterRegistration", klog.KObj(smcr), "ScyllaDBManagerClusterName", requiredManagerCluster.Name)
 		managerClusterID, err := managerClient.CreateCluster(ctx, requiredManagerCluster)
 		if err != nil {
@@ -116,6 +121,7 @@ func (smcrc *Controller) syncManager(
 
 	ownerUIDLabelValue, hasOwnerUIDLabel := managerCluster.Labels[naming.OwnerUIDLabel]
 	if !hasOwnerUIDLabel {
+		setDatabaseConnectionVerified(status, smcr, metav1.ConditionFalse, "AwaitingDatabaseConnectionVerification", "Awaiting Manager verification of all configured database connections.")
 		klog.Warningf("ScyllaDB Manager cluster %q is missing the owner UID label. Deleting it to avoid a name collision.", managerCluster.Name)
 		if err := managerClient.DeleteCluster(ctx, managerCluster.ID); err != nil {
 			setManagerAPIConnectionVerified(status, smcr, metav1.ConditionFalse, "ManagerAPIRequestFailed", "The verified Manager API request failed.")
@@ -138,6 +144,7 @@ func (smcrc *Controller) syncManager(
 	}
 
 	if ownerUIDLabelValue != string(smcr.UID) || requiredManagerCluster.Labels[naming.ManagedHash] != managerCluster.Labels[naming.ManagedHash] {
+		setDatabaseConnectionVerified(status, smcr, metav1.ConditionFalse, "AwaitingDatabaseConnectionVerification", "Awaiting Manager verification of the updated database connection.")
 		requiredManagerCluster.ID = managerCluster.ID
 		klog.V(4).InfoS("Updating ScyllaDB Manager cluster.", "ScyllaDBManagerClusterRegistration", klog.KObj(smcr), "ScyllaDBManagerClusterName", requiredManagerCluster.Name, "ScyllaDBManagerClusterID", requiredManagerCluster.ID)
 		if err := managerClient.UpdateCluster(ctx, requiredManagerCluster); err != nil {
@@ -157,7 +164,7 @@ func (smcrc *Controller) syncManager(
 
 	managerStatus, err := managerClient.ClusterStatus(ctx, managerCluster.ID)
 	if err != nil {
-		setManagerAPIConnectionVerified(status, smcr, metav1.ConditionFalse, "ManagerAPIRequestFailed", "The verified Manager API request failed.")
+		setConnectionVerificationUnavailable(status, smcr, "ManagerAPIRequestFailed", "The verified Manager API request failed.")
 		return progressingConditions, fmt.Errorf("can't get ScyllaDB Manager cluster verification status: %w", err)
 	}
 	setDatabaseConnectionVerificationFromManager(status, smcr, managerStatus)
@@ -252,7 +259,7 @@ func (smcrc *Controller) resolveRegistrationConnection(smcr *scyllav1alpha1.Scyl
 		Kind: "Secret", Namespace: smcr.Namespace, Name: authTokenSecret.Name, Key: naming.ScyllaAgentAuthTokenFileName, ResourceVersion: authTokenSecret.ResourceVersion,
 	})
 
-	addSecretValue := func(selector corev1.SecretKeySelector, destination *string) error {
+	addSecretBytes := func(selector corev1.SecretKeySelector, destination *[]byte) error {
 		secret, err := smcrc.secretLister.Secrets(smcr.Namespace).Get(selector.Name)
 		if err != nil {
 			return fmt.Errorf("can't get Secret %q: %w", selector.Name, err)
@@ -261,10 +268,18 @@ func (smcrc *Controller) resolveRegistrationConnection(smcr *scyllav1alpha1.Scyl
 		if !found || len(value) == 0 {
 			return fmt.Errorf("Secret %q key %q is missing or empty", selector.Name, selector.Key)
 		}
-		*destination = string(value)
+		*destination = append([]byte(nil), value...)
 		revision.ReferencedObjects = append(revision.ReferencedObjects, referencedObjectRevision{
 			Kind: "Secret", Namespace: smcr.Namespace, Name: selector.Name, Key: selector.Key, ResourceVersion: secret.ResourceVersion,
 		})
+		return nil
+	}
+	addSecretValue := func(selector corev1.SecretKeySelector, destination *string) error {
+		var value []byte
+		if err := addSecretBytes(selector, &value); err != nil {
+			return err
+		}
+		*destination = string(value)
 		return nil
 	}
 	addCAValue := func(configMapSelector *corev1.ConfigMapKeySelector, secretSelector *corev1.SecretKeySelector, destination *[]byte) error {
@@ -340,6 +355,15 @@ func (smcrc *Controller) resolveRegistrationConnection(smcr *scyllav1alpha1.Scyl
 		if err := addCAValue(smcr.Spec.TLS.CQL.CAConfigMapKeyRef, smcr.Spec.TLS.CQL.CASecretKeyRef, &connection.CQLCA); err != nil {
 			return nil, fmt.Errorf("can't resolve CQL CA: %w", err)
 		}
+		if smcr.Spec.TLS.CQL.ClientCertificate == nil {
+			return nil, fmt.Errorf("CQL client certificate is required")
+		}
+		if err := addSecretBytes(smcr.Spec.TLS.CQL.ClientCertificate.CertificateSecretKeyRef, &connection.CQLClientCertificate); err != nil {
+			return nil, fmt.Errorf("can't resolve CQL client certificate: %w", err)
+		}
+		if err := addSecretBytes(smcr.Spec.TLS.CQL.ClientCertificate.PrivateKeySecretKeyRef, &connection.CQLClientPrivateKey); err != nil {
+			return nil, fmt.Errorf("can't resolve CQL client private key: %w", err)
+		}
 	}
 	if smcr.Spec.TLS != nil && smcr.Spec.TLS.Alternator != nil {
 		revision.AlternatorServerName = smcr.Spec.TLS.Alternator.ServerName
@@ -397,6 +421,7 @@ func makeRequiredScyllaDBManagerCluster(name, ownerUID, host string, smcr *scyll
 	}
 	if smcr.Spec.TLS != nil && smcr.Spec.TLS.CQL != nil {
 		cluster.CQLCAFile, cluster.CQLServerName = connection.CQLCA, smcr.Spec.TLS.CQL.ServerName
+		cluster.SSLUserCertFile, cluster.SSLUserKeyFile = connection.CQLClientCertificate, connection.CQLClientPrivateKey
 	}
 	if smcr.Spec.TLS != nil && smcr.Spec.TLS.Alternator != nil {
 		cluster.AlternatorCAFile, cluster.AlternatorServerName = connection.AlternatorCA, smcr.Spec.TLS.Alternator.ServerName
@@ -443,6 +468,11 @@ func setDatabaseConnectionVerified(status *scyllav1alpha1.ScyllaDBManagerCluster
 		Type:   scyllav1alpha1.ScyllaDBManagerClusterRegistrationDatabaseConnectionVerifiedCondition,
 		Status: conditionStatus, ObservedGeneration: smcr.Generation, Reason: reason, Message: message,
 	})
+}
+
+func setConnectionVerificationUnavailable(status *scyllav1alpha1.ScyllaDBManagerClusterRegistrationStatus, smcr *scyllav1alpha1.ScyllaDBManagerClusterRegistration, reason, message string) {
+	setManagerAPIConnectionVerified(status, smcr, metav1.ConditionFalse, reason, message)
+	setDatabaseConnectionVerified(status, smcr, metav1.ConditionFalse, reason, message)
 }
 
 func setDatabaseConnectionVerificationFromManager(status *scyllav1alpha1.ScyllaDBManagerClusterRegistrationStatus, smcr *scyllav1alpha1.ScyllaDBManagerClusterRegistration, managerStatus []*managerclientsecure.ClusterStatusItem) {

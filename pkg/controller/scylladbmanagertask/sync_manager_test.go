@@ -4,8 +4,13 @@ package scylladbmanagertask
 
 import (
 	"context"
+	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strconv"
 	"testing"
@@ -18,6 +23,7 @@ import (
 	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	scyllav1alpha1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1alpha1"
+	"github.com/scylladb/scylla-operator/pkg/controllertools"
 	"github.com/scylladb/scylla-operator/pkg/helpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/pointer"
@@ -263,6 +269,253 @@ func TestScyllaDBManagerClusterRegistrationReadyForTasks(t *testing.T) {
 	}
 	if !scyllaDBManagerClusterRegistrationReadyForTasks(smcr) {
 		t.Fatal("expected current verified conditions to allow Manager task reconciliation")
+	}
+}
+
+func TestValidateBackupTaskCreateAndUpdateContract(t *testing.T) {
+	t.Parallel()
+
+	task := newValidateBackupScyllaDBManagerTask()
+	required, err := makeScyllaDBManagerClientTask(task, "cluster-id")
+	if err != nil {
+		t.Fatalf("can't make validate_backup task: %v", err)
+	}
+	if required.Type != managerclient.ValidateBackupTask || required.Name != "weekly-backup-validation" {
+		t.Fatalf("unexpected type/name: %q/%q", required.Type, required.Name)
+	}
+	properties := required.Properties.(map[string]any)
+	if got, ok := properties["delete_orphaned_files"].(bool); !ok || got {
+		t.Fatalf("validate_backup must always send delete_orphaned_files=false, got %#v", properties["delete_orphaned_files"])
+	}
+	if diff := cmp.Diff([]string{"s3:sophena-backups"}, properties["location"]); diff != "" {
+		t.Fatalf("unexpected locations (-want,+got):\n%s", diff)
+	}
+	if required.Schedule.Timezone != "America/Vancouver" || required.Schedule.Cron != "0 3 * * SUN" || required.Schedule.NumRetries != 3 || required.Schedule.RetryWait != "10m0s" {
+		t.Fatalf("unexpected schedule: %#v", required.Schedule)
+	}
+
+	updated := task.DeepCopy()
+	updated.Spec.ValidateBackup.Location = []string{"s3:sophena-backups-2"}
+	updatedRequired, err := makeScyllaDBManagerClientTask(updated, "cluster-id")
+	if err != nil {
+		t.Fatalf("can't make updated validate_backup task: %v", err)
+	}
+	if required.Labels[naming.ManagedHash] == updatedRequired.Labels[naming.ManagedHash] {
+		t.Fatal("location drift must change the managed hash and trigger an in-place Manager update")
+	}
+
+	observed := &managerclient.TaskListItem{
+		Enabled:  true,
+		Labels:   maps.Clone(required.Labels),
+		Name:     required.Name,
+		Type:     required.Type,
+		Schedule: required.Schedule,
+		Properties: map[string]interface{}{
+			"location":              []interface{}{"s3:sophena-backups"},
+			"delete_orphaned_files": false,
+		},
+	}
+	if !validateBackupManagerTaskMatchesDesired(observed, required) {
+		t.Fatal("exact Manager readback should match desired validation task")
+	}
+	// Keeping a stale managed-hash label must not hide an out-of-band property change.
+	observed.Properties.(map[string]interface{})["location"] = []interface{}{"s3:drifted"}
+	if validateBackupManagerTaskMatchesDesired(observed, required) {
+		t.Fatal("strict readback must detect location drift even when the managed-hash label is unchanged")
+	}
+}
+
+func TestValidateBackupTaskAdoptExternalDeleteRestartFailureAndNoDuplicateResolution(t *testing.T) {
+	t.Parallel()
+
+	canonical := &managerclient.TaskListItem{
+		ID:   "task-a",
+		Name: "weekly-backup-validation",
+		Type: managerclient.ValidateBackupTask,
+		Properties: map[string]interface{}{
+			"location":              []interface{}{"s3:sophena-backups"},
+			"delete_orphaned_files": false,
+		},
+	}
+
+	// Restart/adoption finds the sole canonical task even with no status task ID.
+	got, found, err := resolveScyllaDBManagerClientTask([]*managerclient.TaskListItem{canonical}, managerclient.ValidateBackupTask, canonical.Name, "uid")
+	if err != nil || !found || got.ID != canonical.ID || !isNonDestructiveValidateBackupTask(got) {
+		t.Fatalf("safe restart/adoption resolution failed: found=%t got=%#v err=%v", found, got, err)
+	}
+
+	// External deletion produces an unambiguous not-found result, allowing exactly one recreation.
+	got, found, err = resolveScyllaDBManagerClientTask(nil, managerclient.ValidateBackupTask, canonical.Name, "uid")
+	if err != nil || found || got != nil {
+		t.Fatalf("external deletion resolution failed: found=%t got=%#v err=%v", found, got, err)
+	}
+
+	// An unrelated task is ignored; two canonical tasks fail closed rather than creating a third.
+	duplicateValue := *canonical
+	duplicate := &duplicateValue
+	duplicate.ID = "task-b"
+	_, _, err = resolveScyllaDBManagerClientTask([]*managerclient.TaskListItem{canonical, duplicate}, managerclient.ValidateBackupTask, canonical.Name, "uid")
+	if err == nil || !controllertools.IsNonRetriable(err) {
+		t.Fatalf("expected duplicate canonical tasks to fail closed, got %v", err)
+	}
+
+	renamed := *canonical
+	renamed.Name = "externally-renamed"
+	renamed.Labels = map[string]string{naming.OwnerUIDLabel: "uid"}
+	got, found, err = resolveScyllaDBManagerClientTask([]*managerclient.TaskListItem{&renamed}, managerclient.ValidateBackupTask, canonical.Name, "uid")
+	if err != nil || !found || got.ID != canonical.ID {
+		t.Fatalf("sole externally renamed owned task must update in place: found=%t got=%#v err=%v", found, got, err)
+	}
+
+	destructiveValue := *canonical
+	destructive := &destructiveValue
+	destructive.Properties = map[string]interface{}{"delete_orphaned_files": true}
+	if isNonDestructiveValidateBackupTask(destructive) {
+		t.Fatal("destructive task must never be considered safe for adoption")
+	}
+	malformedValue := *canonical
+	malformed := &malformedValue
+	malformed.Properties = "invalid"
+	if isNonDestructiveValidateBackupTask(malformed) {
+		t.Fatal("malformed properties must fail closed")
+	}
+}
+
+func TestValidateBackupTaskStrictReadbackAndOwnedDelete(t *testing.T) {
+	t.Parallel()
+
+	next := strfmt.DateTime(validTime.Add(time.Hour))
+	lastSuccess := strfmt.DateTime(validTime)
+	lastError := strfmt.DateTime(validTime.Add(-time.Hour))
+	managerTask := &managerclient.TaskListItem{
+		ID:             "task-id",
+		Name:           "weekly-backup-validation",
+		Status:         managerclient.TaskStatusDone,
+		NextActivation: &next,
+		LastSuccess:    &lastSuccess,
+		LastError:      &lastError,
+		Labels:         map[string]string{naming.OwnerUIDLabel: "uid"},
+	}
+	owner := newValidateBackupScyllaDBManagerTask()
+	owner.Generation = 7
+	status := (&Controller{}).calculateStatus(owner)
+	syncScyllaDBManagerTaskReadbackStatus(status, managerTask)
+	if status.TaskID == nil || *status.TaskID != "task-id" || status.ManagerStatus == nil || *status.ManagerStatus != managerclient.TaskStatusDone {
+		t.Fatalf("incomplete ID/status readback: %#v", status)
+	}
+	if status.NextActivation == nil || !status.NextActivation.Time.Equal(time.Time(next)) || status.LastSuccess == nil || status.LastError == nil {
+		t.Fatalf("incomplete activation readback: %#v", status)
+	}
+	if status.ObservedGeneration == nil || *status.ObservedGeneration != 7 {
+		t.Fatalf("observed generation was not preserved in strict readback: %#v", status)
+	}
+
+	if !isScyllaDBManagerTaskOwnedBy(managerTask, owner) {
+		t.Fatal("exact owner UID must permit finalizer deletion")
+	}
+	managerTask.Labels[naming.OwnerUIDLabel] = "different-uid"
+	if isScyllaDBManagerTaskOwnedBy(managerTask, owner) {
+		t.Fatal("mismatched owner UID must prohibit finalizer deletion")
+	}
+}
+
+func TestValidateBackupTaskCreateUsesManagerAPIAndFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	var requestBody map[string]interface{}
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/cluster/cluster-id/tasks" {
+			t.Errorf("unexpected Manager request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+			t.Errorf("can't decode Manager task request: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Location", "/api/v1/cluster/cluster-id/task/validate_backup/11111111-1111-4111-8111-111111111111")
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+
+	transport, ok := server.Client().Transport.(*http.Transport)
+	if !ok || transport.TLSClientConfig == nil {
+		t.Fatal("test server did not provide TLS configuration")
+	}
+	managerClient, err := managerclient.NewClient(server.URL+"/api/v1", managerclient.WithTLSConfig(transport.TLSClientConfig.Clone()))
+	if err != nil {
+		t.Fatalf("can't create Manager client: %v", err)
+	}
+	// Assert this test remains a verified TLS request even if httptest's defaults change.
+	if transport.TLSClientConfig.MinVersion != 0 && transport.TLSClientConfig.MinVersion < tls.VersionTLS12 {
+		t.Fatal("test Manager transport permits obsolete TLS")
+	}
+
+	status := &scyllav1alpha1.ScyllaDBManagerTaskStatus{}
+	controller := &Controller{}
+	conditions, err := controller.syncManagerClientTaskNotFound(context.Background(), newValidateBackupScyllaDBManagerTask(), status, &managerClient, "cluster-id")
+	if err != nil {
+		t.Fatalf("can't create Manager validation task: %v", err)
+	}
+	if len(conditions) != 1 || conditions[0].Reason != "CreatedScyllaDBManagerTask" || status.TaskID == nil || *status.TaskID != "11111111-1111-4111-8111-111111111111" {
+		t.Fatalf("unexpected create result: conditions=%#v status=%#v", conditions, status)
+	}
+	properties, ok := requestBody["properties"].(map[string]interface{})
+	if !ok || properties["delete_orphaned_files"] != false {
+		t.Fatalf("Manager create request was not provably non-destructive: %#v", requestBody)
+	}
+}
+
+func TestValidateBackupTaskManagerCreateFailureDoesNotClaimOwnership(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"message":"injected failure"}`))
+	}))
+	defer server.Close()
+
+	transport := server.Client().Transport.(*http.Transport)
+	managerClient, err := managerclient.NewClient(server.URL+"/api/v1", managerclient.WithTLSConfig(transport.TLSClientConfig.Clone()))
+	if err != nil {
+		t.Fatalf("can't create Manager client: %v", err)
+	}
+	status := &scyllav1alpha1.ScyllaDBManagerTaskStatus{}
+	controller := &Controller{}
+	conditions, err := controller.syncManagerClientTaskNotFound(context.Background(), newValidateBackupScyllaDBManagerTask(), status, &managerClient, "cluster-id")
+	if err == nil {
+		t.Fatal("expected Manager create failure")
+	}
+	if status.TaskID != nil || len(conditions) != 0 {
+		t.Fatalf("failed create must not claim a Manager task: conditions=%#v status=%#v", conditions, status)
+	}
+}
+
+func newValidateBackupScyllaDBManagerTask() *scyllav1alpha1.ScyllaDBManagerTask {
+	cron := "0 3 * * SUN"
+	timezone := "America/Vancouver"
+	return &scyllav1alpha1.ScyllaDBManagerTask{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "weekly-backup-validation",
+			Namespace: "sophena",
+			UID:       "uid",
+		},
+		Spec: scyllav1alpha1.ScyllaDBManagerTaskSpec{
+			ScyllaDBClusterRef: scyllav1alpha1.LocalScyllaDBReference{Name: "scylladb", Kind: scyllav1alpha1.ScyllaDBDatacenterGVK.Kind},
+			Type:               scyllav1alpha1.ScyllaDBManagerTaskTypeValidateBackup,
+			ValidateBackup: &scyllav1alpha1.ScyllaDBManagerValidateBackupTaskOptions{
+				ScyllaDBManagerTaskSchedule: scyllav1alpha1.ScyllaDBManagerTaskSchedule{
+					Cron:       &cron,
+					Timezone:   &timezone,
+					NumRetries: pointer.Ptr[int64](3),
+					RetryWait:  &metav1.Duration{Duration: 10 * time.Minute},
+					StartDate:  &metav1.Time{Time: validTime},
+				},
+				Location: []string{"s3:sophena-backups"},
+			},
+		},
 	}
 }
 
