@@ -124,11 +124,12 @@ type ScyllaDBManagerRepairTaskOptions struct {
 
 	// intensity specifies the number of token ranges to repair in a single ScyllaDB node at the same time.
 	// Changing the intensity impacts the repair granularity in case it is resumed. The higher the value, the more work on resumption.
+	// Fractional values between zero and one are supported for clusters that do not use row-level repair.
 	// When set to zero, the number of token ranges is adjusted to the maximum supported number.
 	// When set to a value greater than the maximum supported by the node, intensity is capped at the maximum supported value.
 	// Refer to repair documentation for details.
 	// +optional
-	Intensity *int64 `json:"intensity,omitempty"`
+	Intensity *string `json:"intensity,omitempty"`
 
 	// keyspace specifies a list of `glob` patterns used to include or exclude tables from repair.
 	// The patterns match keyspaces and tables. Keyspace names are separated from table names with a dot e.g. `!keyspace.table_prefix_*`.

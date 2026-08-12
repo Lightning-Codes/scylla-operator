@@ -2688,7 +2688,7 @@ func (in *ScyllaDBManagerRepairTaskOptions) DeepCopyInto(out *ScyllaDBManagerRep
 	}
 	if in.Intensity != nil {
 		in, out := &in.Intensity, &out.Intensity
-		*out = new(int64)
+		*out = new(string)
 		**out = **in
 	}
 	if in.Keyspace != nil {

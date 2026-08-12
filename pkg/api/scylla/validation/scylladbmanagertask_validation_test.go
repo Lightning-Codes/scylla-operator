@@ -868,7 +868,7 @@ func TestValidateScyllaDBManagerTask(t *testing.T) {
 					},
 					Type: scyllav1alpha1.ScyllaDBManagerTaskTypeRepair,
 					Repair: &scyllav1alpha1.ScyllaDBManagerRepairTaskOptions{
-						Intensity: pointer.Ptr[int64](-1),
+						Intensity: pointer.Ptr("-1"),
 					},
 				},
 			},
@@ -876,11 +876,43 @@ func TestValidateScyllaDBManagerTask(t *testing.T) {
 				&field.Error{
 					Type:     field.ErrorTypeInvalid,
 					Field:    "spec.repair.intensity",
-					BadValue: int64(-1),
+					BadValue: "-1",
 					Detail:   "can't be negative",
 				},
 			},
-			expectedErrorString: `spec.repair.intensity: Invalid value: -1: can't be negative`,
+			expectedErrorString: `spec.repair.intensity: Invalid value: "-1": can't be negative`,
+		},
+		{
+			name: "valid repair with fractional intensity",
+			scyllaDBManagerTask: &scyllav1alpha1.ScyllaDBManagerTask{
+				ObjectMeta: metav1.ObjectMeta{Name: "repair"},
+				Spec: scyllav1alpha1.ScyllaDBManagerTaskSpec{
+					ScyllaDBClusterRef: scyllav1alpha1.LocalScyllaDBReference{Name: "basic", Kind: "ScyllaDBDatacenter"},
+					Type:               scyllav1alpha1.ScyllaDBManagerTaskTypeRepair,
+					Repair: &scyllav1alpha1.ScyllaDBManagerRepairTaskOptions{
+						Intensity: pointer.Ptr("0.25"),
+					},
+				},
+			},
+			expectedErrorList:   nil,
+			expectedErrorString: ``,
+		},
+		{
+			name: "invalid repair with non-finite intensity",
+			scyllaDBManagerTask: &scyllav1alpha1.ScyllaDBManagerTask{
+				ObjectMeta: metav1.ObjectMeta{Name: "repair"},
+				Spec: scyllav1alpha1.ScyllaDBManagerTaskSpec{
+					ScyllaDBClusterRef: scyllav1alpha1.LocalScyllaDBReference{Name: "basic", Kind: "ScyllaDBDatacenter"},
+					Type:               scyllav1alpha1.ScyllaDBManagerTaskTypeRepair,
+					Repair: &scyllav1alpha1.ScyllaDBManagerRepairTaskOptions{
+						Intensity: pointer.Ptr("NaN"),
+					},
+				},
+			},
+			expectedErrorList: field.ErrorList{
+				&field.Error{Type: field.ErrorTypeInvalid, Field: "spec.repair.intensity", BadValue: "NaN", Detail: "must be a finite float"},
+			},
+			expectedErrorString: `spec.repair.intensity: Invalid value: "NaN": must be a finite float`,
 		},
 		{
 			name: "valid repair intensity override",
@@ -1142,7 +1174,7 @@ func TestValidateScyllaDBManagerTask(t *testing.T) {
 					},
 					Type: scyllav1alpha1.ScyllaDBManagerTaskTypeRepair,
 					Repair: &scyllav1alpha1.ScyllaDBManagerRepairTaskOptions{
-						Intensity: pointer.Ptr[int64](1),
+						Intensity: pointer.Ptr("1"),
 					},
 				},
 			},

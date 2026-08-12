@@ -4,6 +4,7 @@ package validation
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"slices"
 	"strconv"
@@ -332,8 +333,15 @@ func validateScyllaDBManagerRepairTaskOptions(repairOptions *scyllav1alpha1.Scyl
 		}
 	}
 
-	if repairOptions.Intensity != nil && *repairOptions.Intensity < 0 {
-		allErrs = append(allErrs, field.Invalid(fldPath.Child("intensity"), *repairOptions.Intensity, "can't be negative"))
+	if repairOptions.Intensity != nil {
+		intensity, err := strconv.ParseFloat(*repairOptions.Intensity, 64)
+		if err != nil {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("intensity"), *repairOptions.Intensity, "must be a float"))
+		} else if math.IsNaN(intensity) || math.IsInf(intensity, 0) {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("intensity"), *repairOptions.Intensity, "must be a finite float"))
+		} else if intensity < 0 {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("intensity"), *repairOptions.Intensity, "can't be negative"))
+		}
 	}
 
 	if !flags.isParallelValidationDisabled && repairOptions.Parallel != nil && *repairOptions.Parallel < 0 {

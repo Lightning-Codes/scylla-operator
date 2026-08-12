@@ -107,7 +107,7 @@ func Test_makeRequiredScyllaDBManagerClientTask(t *testing.T) {
 					"fail_fast":             true,
 					"host":                  "10.0.0.1",
 					"ignore_down_hosts":     false,
-					"intensity":             int64(1),
+					"intensity":             float64(1),
 					"parallel":              int64(1),
 					"small_table_threshold": int64(1073741824),
 				},
@@ -1015,7 +1015,7 @@ func Test_makeRequiredScyllaDBManagerClientTaskWithManagedHashFunc(t *testing.T)
 					"fail_fast":             true,
 					"host":                  "10.0.0.1",
 					"ignore_down_hosts":     false,
-					"intensity":             int64(1),
+					"intensity":             float64(1),
 					"parallel":              int64(1),
 					"small_table_threshold": int64(1073741824),
 				},
@@ -1088,7 +1088,7 @@ func Test_makeRequiredScyllaDBManagerClientTaskWithManagedHashFunc(t *testing.T)
 					"fail_fast":             true,
 					"host":                  "10.0.0.1",
 					"ignore_down_hosts":     false,
-					"intensity":             int64(1),
+					"intensity":             float64(1),
 					"parallel":              int64(1),
 					"small_table_threshold": int64(1073741824),
 				},
@@ -1193,7 +1193,7 @@ func Test_makeRequiredScyllaDBManagerClientTaskWithManagedHashFunc(t *testing.T)
 					"fail_fast":             true,
 					"host":                  "10.0.0.1",
 					"ignore_down_hosts":     false,
-					"intensity":             int64(1),
+					"intensity":             float64(1),
 					"parallel":              int64(1),
 					"small_table_threshold": int64(1073741824),
 				},
@@ -1238,7 +1238,7 @@ func Test_makeRequiredScyllaDBManagerClientTaskWithManagedHashFunc(t *testing.T)
 					"fail_fast":             true,
 					"host":                  "10.0.0.1",
 					"ignore_down_hosts":     false,
-					"intensity":             int64(1),
+					"intensity":             float64(1),
 					"parallel":              int64(1),
 					"small_table_threshold": int64(1073741824),
 				},
@@ -1317,7 +1317,7 @@ func Test_makeRequiredScyllaDBManagerClientTaskWithManagedHashFunc(t *testing.T)
 					"fail_fast":             true,
 					"host":                  "10.0.0.1",
 					"ignore_down_hosts":     false,
-					"intensity":             int64(1),
+					"intensity":             float64(1),
 					"parallel":              int64(1),
 					"small_table_threshold": int64(1073741824),
 				},
@@ -1364,7 +1364,7 @@ func Test_makeRequiredScyllaDBManagerClientTaskWithManagedHashFunc(t *testing.T)
 					"fail_fast":             true,
 					"host":                  "10.0.0.1",
 					"ignore_down_hosts":     false,
-					"intensity":             int64(1),
+					"intensity":             float64(1),
 					"parallel":              int64(1),
 					"small_table_threshold": int64(1073741824),
 				},
@@ -1411,7 +1411,7 @@ func Test_makeRequiredScyllaDBManagerClientTaskWithManagedHashFunc(t *testing.T)
 					"fail_fast":             true,
 					"host":                  "10.0.0.1",
 					"ignore_down_hosts":     false,
-					"intensity":             int64(1),
+					"intensity":             float64(1),
 					"parallel":              int64(1),
 					"small_table_threshold": int64(1073741824),
 				},
@@ -1452,7 +1452,7 @@ func Test_makeRequiredScyllaDBManagerClientTaskWithManagedHashFunc(t *testing.T)
 					"fail_fast":             true,
 					"host":                  "10.0.0.1",
 					"ignore_down_hosts":     false,
-					"intensity":             int64(1),
+					"intensity":             float64(1),
 					"parallel":              int64(1),
 					"small_table_threshold": int64(1073741824),
 				},
@@ -1497,7 +1497,7 @@ func Test_makeRequiredScyllaDBManagerClientTaskWithManagedHashFunc(t *testing.T)
 					"fail_fast":             true,
 					"host":                  "10.0.0.1",
 					"ignore_down_hosts":     false,
-					"intensity":             int64(1),
+					"intensity":             float64(1),
 					"parallel":              int64(1),
 					"small_table_threshold": int64(1073741824),
 				},
@@ -1542,7 +1542,7 @@ func Test_makeRequiredScyllaDBManagerClientTaskWithManagedHashFunc(t *testing.T)
 					"fail_fast":             true,
 					"host":                  "10.0.0.1",
 					"ignore_down_hosts":     false,
-					"intensity":             int64(1),
+					"intensity":             float64(1),
 					"parallel":              int64(1),
 					"small_table_threshold": int64(536870912),
 				},
@@ -1663,7 +1663,7 @@ func newRepairScyllaDBManagerTaskWithScyllaDBDatacenterRef() *scyllav1alpha1.Scy
 				FailFast:            pointer.Ptr(true),
 				Host:                pointer.Ptr("10.0.0.1"),
 				IgnoreDownHosts:     pointer.Ptr(false),
-				Intensity:           pointer.Ptr[int64](1),
+				Intensity:           pointer.Ptr("1"),
 				Parallel:            pointer.Ptr[int64](1),
 				SmallTableThreshold: pointer.Ptr(resource.MustParse("1Gi")),
 			},
@@ -1743,6 +1743,21 @@ func Test_parseByteCount(t *testing.T) {
 				t.Errorf("expected %d, got %d", tc.expected, result)
 			}
 		})
+	}
+}
+
+func Test_makeScyllaDBManagerClientRepairTaskPropertiesFractionalIntensity(t *testing.T) {
+	t.Parallel()
+
+	properties, err := makeScyllaDBManagerClientRepairTaskProperties(&scyllav1alpha1.ScyllaDBManagerRepairTaskOptions{
+		Intensity: pointer.Ptr("0.25"),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if diff := cmp.Diff(map[string]any{"intensity": float64(0.25)}, properties); diff != "" {
+		t.Fatalf("expected and got repair properties differ:\n%s", diff)
 	}
 }
 

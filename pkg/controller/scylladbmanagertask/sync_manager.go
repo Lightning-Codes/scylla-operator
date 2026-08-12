@@ -691,7 +691,14 @@ func makeScyllaDBManagerClientRepairTaskProperties(options *scyllav1alpha1.Scyll
 	}
 
 	if options.Intensity != nil {
-		managerClientTaskProperties["intensity"] = *options.Intensity
+		intensity, err := strconv.ParseFloat(*options.Intensity, 64)
+		if err != nil {
+			return nil, fmt.Errorf("can't parse repair intensity: %w", err)
+		}
+		if math.IsNaN(intensity) || math.IsInf(intensity, 0) {
+			return nil, fmt.Errorf("repair intensity must be finite")
+		}
+		managerClientTaskProperties["intensity"] = intensity
 	}
 
 	if options.Parallel != nil {
