@@ -17,7 +17,6 @@ import (
 	scyllainformers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions"
 	"github.com/scylladb/scylla-operator/pkg/clusterdomain"
 	"github.com/scylladb/scylla-operator/pkg/cmdutil"
-	"github.com/scylladb/scylla-operator/pkg/controller/globalscylladbmanager"
 	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfig"
 	"github.com/scylladb/scylla-operator/pkg/controller/nodeconfigpod"
 	"github.com/scylladb/scylla-operator/pkg/controller/orphanedpv"
@@ -338,6 +337,7 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 		kubeInformers.Policy().V1().PodDisruptionBudgets(),
 		kubeInformers.Networking().V1().Ingresses(),
 		kubeInformers.Batch().V1().Jobs(),
+		scyllaOperatorConfigInformers.Scylla().V1alpha1().ScyllaOperatorConfigs(),
 		scyllaInformers.Scylla().V1alpha1().ScyllaDBDatacenters(),
 		scyllaInformers.Scylla().V1alpha1().ScyllaDBDatacenterNodesStatusReports(),
 		o.OperatorImage,
@@ -685,25 +685,15 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 		return fmt.Errorf("can't create ScyllaDBCluster controller: %w", err)
 	}
 
-	gsmc, err := globalscylladbmanager.NewController(
-		o.kubeClient,
-		o.scyllaClient,
-		scyllaInformers.Scylla().V1alpha1().ScyllaDBManagerClusterRegistrations(),
-		scyllaInformers.Scylla().V1alpha1().ScyllaDBDatacenters(),
-		scyllaInformers.Scylla().V1alpha1().ScyllaDBClusters(),
-		kubeInformers.Core().V1().Namespaces(),
-	)
-	if err != nil {
-		return fmt.Errorf("can't create global ScyllaDB Manager controller: %w", err)
-	}
-
 	smcrc, err := scylladbmanagerclusterregistration.NewController(
 		o.kubeClient,
 		o.scyllaClient,
 		scyllaInformers.Scylla().V1alpha1().ScyllaDBManagerClusterRegistrations(),
+		scyllaInformers.Scylla().V1().ScyllaClusters(),
 		scyllaInformers.Scylla().V1alpha1().ScyllaDBDatacenters(),
 		scyllaInformers.Scylla().V1alpha1().ScyllaDBClusters(),
 		kubeInformers.Core().V1().Secrets(),
+		kubeInformers.Core().V1().ConfigMaps(),
 		kubeInformers.Core().V1().Namespaces(),
 	)
 	if err != nil {
@@ -833,12 +823,6 @@ func (o *OperatorOptions) run(ctx context.Context, streams genericclioptions.IOS
 	go func() {
 		defer wg.Done()
 		sdbcc.Run(ctx, o.ConcurrentSyncs)
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		gsmc.Run(ctx)
 	}()
 
 	wg.Add(1)

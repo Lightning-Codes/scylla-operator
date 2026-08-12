@@ -3,7 +3,6 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.21.0
-    scylla-operator.scylladb.com/internal-api-type: "true"
   creationTimestamp: null
   name: scylladbmanagerclusterregistrations.scylla.scylladb.com
 spec:
@@ -21,6 +20,12 @@ spec:
       type: string
     - jsonPath: .status.conditions[?(@.type=='Degraded')].status
       name: DEGRADED
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='ManagerAPIConnectionVerified')].status
+      name: MANAGER VERIFIED
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='DatabaseConnectionVerified')].status
+      name: DB VERIFIED
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: AGE
@@ -49,19 +54,490 @@ spec:
           spec:
             description: spec defines the desired state of ScyllaDBManagerClusterRegistration.
             properties:
+              authentication:
+                description: |-
+                  authentication configures database credentials. Values are read from Secrets only while
+                  constructing a Manager request and are never persisted in this resource's status.
+                properties:
+                  alternator:
+                    description: alternator configures access-key authentication for
+                      Alternator.
+                    properties:
+                      accessKeyIDSecretKeyRef:
+                        description: accessKeyIDSecretKeyRef selects the Alternator
+                          access key ID from a Secret in the registration namespace.
+                        properties:
+                          key:
+                            description: The key of the secret to select from.  Must
+                              be a valid secret key.
+                            type: string
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                          optional:
+                            description: Specify whether the Secret or its key must
+                              be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      secretAccessKeySecretKeyRef:
+                        description: secretAccessKeySecretKeyRef selects the Alternator
+                          secret access key from a Secret in the registration namespace.
+                        properties:
+                          key:
+                            description: The key of the secret to select from.  Must
+                              be a valid secret key.
+                            type: string
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                          optional:
+                            description: Specify whether the Secret or its key must
+                              be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
+                    required:
+                    - accessKeyIDSecretKeyRef
+                    - secretAccessKeySecretKeyRef
+                    type: object
+                  cql:
+                    description: cql configures username and password authentication
+                      for CQL.
+                    properties:
+                      passwordSecretKeyRef:
+                        description: passwordSecretKeyRef selects the CQL password
+                          from a Secret in the registration namespace.
+                        properties:
+                          key:
+                            description: The key of the secret to select from.  Must
+                              be a valid secret key.
+                            type: string
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                          optional:
+                            description: Specify whether the Secret or its key must
+                              be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      usernameSecretKeyRef:
+                        description: usernameSecretKeyRef selects the CQL username
+                          from a Secret in the registration namespace.
+                        properties:
+                          key:
+                            description: The key of the secret to select from.  Must
+                              be a valid secret key.
+                            type: string
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                          optional:
+                            description: Specify whether the Secret or its key must
+                              be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
+                    required:
+                    - passwordSecretKeyRef
+                    - usernameSecretKeyRef
+                    type: object
+                required:
+                - cql
+                type: object
+              managerAPI:
+                description: managerAPI configures the verified mutual-TLS connection
+                  from Operator to Manager.
+                properties:
+                  caConfigMapKeyRef:
+                    description: |-
+                      caConfigMapKeyRef selects the PEM CA bundle used to verify the Manager API.
+                      Mutually exclusive with caSecretKeyRef.
+                    properties:
+                      key:
+                        description: The key to select.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the ConfigMap or its key must
+                          be defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  caSecretKeyRef:
+                    description: |-
+                      caSecretKeyRef selects the PEM CA bundle used to verify the Manager API.
+                      Mutually exclusive with caConfigMapKeyRef.
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  clientCertificate:
+                    description: clientCertificate configures the client identity
+                      required by Manager mutual TLS.
+                    properties:
+                      certificateSecretKeyRef:
+                        description: certificateSecretKeyRef selects a PEM client
+                          certificate from a Secret in the registration namespace.
+                        properties:
+                          key:
+                            description: The key of the secret to select from.  Must
+                              be a valid secret key.
+                            type: string
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                          optional:
+                            description: Specify whether the Secret or its key must
+                              be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      privateKeySecretKeyRef:
+                        description: privateKeySecretKeyRef selects the corresponding
+                          PEM private key from a Secret in the registration namespace.
+                        properties:
+                          key:
+                            description: The key of the secret to select from.  Must
+                              be a valid secret key.
+                            type: string
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                          optional:
+                            description: Specify whether the Secret or its key must
+                              be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
+                    required:
+                    - certificateSecretKeyRef
+                    - privateKeySecretKeyRef
+                    type: object
+                  serverName:
+                    description: serverName is the DNS name verified against the Manager
+                      API serving certificate.
+                    type: string
+                  url:
+                    description: url is the HTTPS base URL of the ScyllaDB Manager
+                      API.
+                    type: string
+                required:
+                - clientCertificate
+                - serverName
+                - url
+                type: object
+                x-kubernetes-validations:
+                - message: exactly one of caConfigMapKeyRef or caSecretKeyRef is required
+                  rule: has(self.caConfigMapKeyRef) != has(self.caSecretKeyRef)
               scyllaDBClusterRef:
                 description: |-
                   scyllaDBClusterRef specifies the typed reference to the local ScyllaDB cluster.
-                  Supported kinds are ScyllaDBCluster and ScyllaDBDatacenter in scylla.scylladb.com group.
+                  Supported kinds are ScyllaCluster, ScyllaDBCluster, and ScyllaDBDatacenter in the
+                  scylla.scylladb.com API group.
                 properties:
                   kind:
                     description: kind specifies the type of the resource.
+                    enum:
+                    - ScyllaCluster
+                    - ScyllaDBCluster
+                    - ScyllaDBDatacenter
                     type: string
                   name:
                     description: name specifies the name of the resource in the same
                       namespace.
                     type: string
+                required:
+                - kind
+                - name
                 type: object
+              tls:
+                description: tls configures endpoint-specific CA trust and server-name
+                  verification.
+                properties:
+                  agent:
+                    description: agent configures strict ScyllaDB Manager Agent server
+                      certificate verification.
+                    properties:
+                      caConfigMapKeyRef:
+                        description: |-
+                          caConfigMapKeyRef selects a PEM CA bundle from a ConfigMap in the registration namespace.
+                          Mutually exclusive with caSecretKeyRef.
+                        properties:
+                          key:
+                            description: The key to select.
+                            type: string
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                          optional:
+                            description: Specify whether the ConfigMap or its key
+                              must be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      caSecretKeyRef:
+                        description: |-
+                          caSecretKeyRef selects a PEM CA bundle from a Secret in the registration namespace.
+                          Mutually exclusive with caConfigMapKeyRef.
+                        properties:
+                          key:
+                            description: The key of the secret to select from.  Must
+                              be a valid secret key.
+                            type: string
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                          optional:
+                            description: Specify whether the Secret or its key must
+                              be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      serverName:
+                        description: serverName is the DNS name Manager must verify
+                          against the serving certificate.
+                        type: string
+                    required:
+                    - serverName
+                    type: object
+                    x-kubernetes-validations:
+                    - message: exactly one of caConfigMapKeyRef or caSecretKeyRef
+                        is required
+                      rule: has(self.caConfigMapKeyRef) != has(self.caSecretKeyRef)
+                  alternator:
+                    description: alternator configures strict Alternator server certificate
+                      verification.
+                    properties:
+                      caConfigMapKeyRef:
+                        description: |-
+                          caConfigMapKeyRef selects a PEM CA bundle from a ConfigMap in the registration namespace.
+                          Mutually exclusive with caSecretKeyRef.
+                        properties:
+                          key:
+                            description: The key to select.
+                            type: string
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                          optional:
+                            description: Specify whether the ConfigMap or its key
+                              must be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      caSecretKeyRef:
+                        description: |-
+                          caSecretKeyRef selects a PEM CA bundle from a Secret in the registration namespace.
+                          Mutually exclusive with caConfigMapKeyRef.
+                        properties:
+                          key:
+                            description: The key of the secret to select from.  Must
+                              be a valid secret key.
+                            type: string
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                          optional:
+                            description: Specify whether the Secret or its key must
+                              be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      serverName:
+                        description: serverName is the DNS name Manager must verify
+                          against the serving certificate.
+                        type: string
+                    required:
+                    - serverName
+                    type: object
+                    x-kubernetes-validations:
+                    - message: exactly one of caConfigMapKeyRef or caSecretKeyRef
+                        is required
+                      rule: has(self.caConfigMapKeyRef) != has(self.caSecretKeyRef)
+                  cql:
+                    description: cql configures strict CQL server certificate verification.
+                    properties:
+                      caConfigMapKeyRef:
+                        description: |-
+                          caConfigMapKeyRef selects a PEM CA bundle from a ConfigMap in the registration namespace.
+                          Mutually exclusive with caSecretKeyRef.
+                        properties:
+                          key:
+                            description: The key to select.
+                            type: string
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                          optional:
+                            description: Specify whether the ConfigMap or its key
+                              must be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      caSecretKeyRef:
+                        description: |-
+                          caSecretKeyRef selects a PEM CA bundle from a Secret in the registration namespace.
+                          Mutually exclusive with caConfigMapKeyRef.
+                        properties:
+                          key:
+                            description: The key of the secret to select from.  Must
+                              be a valid secret key.
+                            type: string
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                          optional:
+                            description: Specify whether the Secret or its key must
+                              be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      serverName:
+                        description: serverName is the DNS name Manager must verify
+                          against the serving certificate.
+                        type: string
+                    required:
+                    - serverName
+                    type: object
+                    x-kubernetes-validations:
+                    - message: exactly one of caConfigMapKeyRef or caSecretKeyRef
+                        is required
+                      rule: has(self.caConfigMapKeyRef) != has(self.caSecretKeyRef)
+                required:
+                - agent
+                - cql
+                type: object
+            required:
+            - authentication
+            - managerAPI
+            - scyllaDBClusterRef
+            - tls
             type: object
           status:
             description: status reflects the observed state of ScyllaDBManagerClusterRegistration.
@@ -128,6 +604,11 @@ spec:
                   - type
                   type: object
                 type: array
+              connectionRevision:
+                description: |-
+                  connectionRevision is a non-secret digest of the desired connection metadata and referenced
+                  object revisions. Secret data is deliberately excluded.
+                type: string
               observedGeneration:
                 description: |-
                   observedGeneration is the most recent generation observed for this ScyllaDBManagerClusterRegistration. It corresponds to the

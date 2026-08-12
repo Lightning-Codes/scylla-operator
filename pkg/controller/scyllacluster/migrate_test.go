@@ -948,7 +948,7 @@ func TestMigrateV1ScyllaClusterToV1Alpha1ScyllaDBManagerTasks(t *testing.T) {
 					Type: scyllav1alpha1.ScyllaDBManagerTaskTypeBackup,
 					ScyllaDBClusterRef: scyllav1alpha1.LocalScyllaDBReference{
 						Name: "simple-cluster",
-						Kind: "ScyllaDBDatacenter",
+						Kind: "ScyllaCluster",
 					},
 					Backup: &scyllav1alpha1.ScyllaDBManagerBackupTaskOptions{
 						ScyllaDBManagerTaskSchedule: scyllav1alpha1.ScyllaDBManagerTaskSchedule{
@@ -1004,7 +1004,7 @@ func TestMigrateV1ScyllaClusterToV1Alpha1ScyllaDBManagerTasks(t *testing.T) {
 					Type: scyllav1alpha1.ScyllaDBManagerTaskTypeRepair,
 					ScyllaDBClusterRef: scyllav1alpha1.LocalScyllaDBReference{
 						Name: "simple-cluster",
-						Kind: "ScyllaDBDatacenter",
+						Kind: "ScyllaCluster",
 					},
 					Repair: &scyllav1alpha1.ScyllaDBManagerRepairTaskOptions{
 						ScyllaDBManagerTaskSchedule: scyllav1alpha1.ScyllaDBManagerTaskSchedule{
@@ -1644,7 +1644,7 @@ func newBackupScyllaDBManagerTask() *scyllav1alpha1.ScyllaDBManagerTask {
 			Type: scyllav1alpha1.ScyllaDBManagerTaskTypeBackup,
 			ScyllaDBClusterRef: scyllav1alpha1.LocalScyllaDBReference{
 				Name: "simple-cluster",
-				Kind: "ScyllaDBDatacenter",
+				Kind: "ScyllaCluster",
 			},
 			Backup: &scyllav1alpha1.ScyllaDBManagerBackupTaskOptions{
 				ScyllaDBManagerTaskSchedule: scyllav1alpha1.ScyllaDBManagerTaskSchedule{
@@ -1702,7 +1702,7 @@ func newRepairScyllaDBManagerTask() *scyllav1alpha1.ScyllaDBManagerTask {
 			Type: scyllav1alpha1.ScyllaDBManagerTaskTypeRepair,
 			ScyllaDBClusterRef: scyllav1alpha1.LocalScyllaDBReference{
 				Name: "simple-cluster",
-				Kind: "ScyllaDBDatacenter",
+				Kind: "ScyllaCluster",
 			},
 			Repair: &scyllav1alpha1.ScyllaDBManagerRepairTaskOptions{
 				ScyllaDBManagerTaskSchedule: scyllav1alpha1.ScyllaDBManagerTaskSchedule{

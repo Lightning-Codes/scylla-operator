@@ -129,7 +129,8 @@ type ScyllaDBManagerRepairTaskOptions struct {
 
 type ScyllaDBManagerTaskSpec struct {
 	// scyllaDBClusterRef is a typed reference to the target cluster in the same namespace.
-	// Supported kinds are ScyllaDBCluster and ScyllaDBDatacenter in scylla.scylladb.com group.
+	// Supported kinds are ScyllaCluster, ScyllaDBCluster, and ScyllaDBDatacenter in the
+	// scylla.scylladb.com API group.
 	ScyllaDBClusterRef LocalScyllaDBReference `json:"scyllaDBClusterRef"`
 
 	// type specifies the type of the task.

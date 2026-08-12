@@ -295,7 +295,7 @@ func (sdcc *Controller) sync(ctx context.Context, key string) error {
 		statefulSetControllerDegradedCondition,
 		sdc.Generation,
 		func() ([]metav1.Condition, error) {
-			return sdcc.syncStatefulSets(ctx, key, sdc, status, statefulSetMap, serviceMap, configMapMap)
+			return sdcc.syncStatefulSets(ctx, key, sdc, status, statefulSetMap, serviceMap, configMapMap, secretMap)
 		},
 	)
 	if err != nil {

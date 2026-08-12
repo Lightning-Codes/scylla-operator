@@ -640,7 +640,7 @@ func migrateV1TaskSpecToV1Alpha1ScyllaDBManagerTask(name string, sc *scyllav1.Sc
 		Spec: scyllav1alpha1.ScyllaDBManagerTaskSpec{
 			ScyllaDBClusterRef: scyllav1alpha1.LocalScyllaDBReference{
 				Name: sc.Name,
-				Kind: scyllav1alpha1.ScyllaDBDatacenterGVK.Kind,
+				Kind: scyllav1.ScyllaClusterGVK.Kind,
 			},
 		},
 	}

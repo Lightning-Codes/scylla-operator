@@ -3,6 +3,7 @@
 package scylladbmanagertask
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -14,13 +15,17 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/scylladb/scylla-manager/v3/pkg/managerclient"
+	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
+	scyllav1alpha1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/helpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/pointer"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apimachineryutilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/cache"
 )
 
 var (
@@ -129,6 +134,135 @@ func Test_makeRequiredScyllaDBManagerClientTask(t *testing.T) {
 				t.Errorf("expected and got ScyllaDB Manager client tasks differ:\n%s\n", cmp.Diff(tc.expected, got))
 			}
 		})
+	}
+}
+
+func TestSyncManagerBlocksManagerAPICallsUntilCurrentVerification(t *testing.T) {
+	t.Parallel()
+
+	const registrationGeneration int64 = 2
+	clusterID := "cluster-id"
+	trueCondition := func(conditionType string, observedGeneration int64) metav1.Condition {
+		return metav1.Condition{
+			Type:               conditionType,
+			Status:             metav1.ConditionTrue,
+			ObservedGeneration: observedGeneration,
+			Reason:             "Verified",
+		}
+	}
+	falseCondition := func(conditionType string) metav1.Condition {
+		return metav1.Condition{
+			Type:               conditionType,
+			Status:             metav1.ConditionFalse,
+			ObservedGeneration: registrationGeneration,
+			Reason:             "NotVerified",
+		}
+	}
+
+	tests := []struct {
+		name       string
+		conditions []metav1.Condition
+	}{
+		{name: "conditions missing"},
+		{
+			name: "Manager API condition false",
+			conditions: []metav1.Condition{
+				falseCondition(scyllav1alpha1.ScyllaDBManagerClusterRegistrationManagerAPIConnectionVerifiedCondition),
+				trueCondition(scyllav1alpha1.ScyllaDBManagerClusterRegistrationDatabaseConnectionVerifiedCondition, registrationGeneration),
+			},
+		},
+		{
+			name: "Manager API condition stale",
+			conditions: []metav1.Condition{
+				trueCondition(scyllav1alpha1.ScyllaDBManagerClusterRegistrationManagerAPIConnectionVerifiedCondition, registrationGeneration-1),
+				trueCondition(scyllav1alpha1.ScyllaDBManagerClusterRegistrationDatabaseConnectionVerifiedCondition, registrationGeneration),
+			},
+		},
+		{
+			name: "database condition missing",
+			conditions: []metav1.Condition{
+				trueCondition(scyllav1alpha1.ScyllaDBManagerClusterRegistrationManagerAPIConnectionVerifiedCondition, registrationGeneration),
+			},
+		},
+		{
+			name: "database condition false",
+			conditions: []metav1.Condition{
+				trueCondition(scyllav1alpha1.ScyllaDBManagerClusterRegistrationManagerAPIConnectionVerifiedCondition, registrationGeneration),
+				falseCondition(scyllav1alpha1.ScyllaDBManagerClusterRegistrationDatabaseConnectionVerifiedCondition),
+			},
+		},
+		{
+			name: "database condition stale",
+			conditions: []metav1.Condition{
+				trueCondition(scyllav1alpha1.ScyllaDBManagerClusterRegistrationManagerAPIConnectionVerifiedCondition, registrationGeneration),
+				trueCondition(scyllav1alpha1.ScyllaDBManagerClusterRegistrationDatabaseConnectionVerifiedCondition, registrationGeneration-1),
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			smt := newBackupScyllaDBManagerTaskWithScyllaDBDatacenterRef()
+			smt.Spec.ScyllaDBClusterRef.Kind = scyllav1.ScyllaClusterGVK.Kind
+			smcrName, err := naming.ScyllaDBManagerClusterRegistrationNameForScyllaDBManagerTask(smt)
+			if err != nil {
+				t.Fatalf("can't calculate registration name: %v", err)
+			}
+			smcr := &scyllav1alpha1.ScyllaDBManagerClusterRegistration{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       smcrName,
+					Namespace:  smt.Namespace,
+					Generation: registrationGeneration,
+				},
+				Spec: scyllav1alpha1.ScyllaDBManagerClusterRegistrationSpec{
+					ScyllaDBClusterRef: smt.Spec.ScyllaDBClusterRef,
+				},
+				Status: scyllav1alpha1.ScyllaDBManagerClusterRegistrationStatus{
+					ClusterID:  &clusterID,
+					Conditions: tc.conditions,
+				},
+			}
+
+			indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+			if err := indexer.Add(smcr); err != nil {
+				t.Fatalf("can't add registration to indexer: %v", err)
+			}
+			kubeClient := fake.NewSimpleClientset()
+			controller := &Controller{
+				kubeClient:                               kubeClient,
+				scyllaDBManagerClusterRegistrationLister: scyllav1alpha1listers.NewScyllaDBManagerClusterRegistrationLister(indexer),
+			}
+
+			conditions, err := controller.syncManager(context.Background(), smt, &scyllav1alpha1.ScyllaDBManagerTaskStatus{})
+			if err != nil {
+				t.Fatalf("expected task to wait without error, got: %v", err)
+			}
+			if len(conditions) != 1 || conditions[0].Reason != "AwaitingVerifiedScyllaDBManagerClusterRegistration" {
+				t.Fatalf("unexpected progressing conditions: %#v", conditions)
+			}
+			if actions := kubeClient.Actions(); len(actions) != 0 {
+				t.Fatalf("expected no Kubernetes or Manager-client setup calls before verification, got actions: %#v", actions)
+			}
+		})
+	}
+}
+
+func TestScyllaDBManagerClusterRegistrationReadyForTasks(t *testing.T) {
+	t.Parallel()
+
+	smcr := &scyllav1alpha1.ScyllaDBManagerClusterRegistration{
+		ObjectMeta: metav1.ObjectMeta{Generation: 3},
+		Status: scyllav1alpha1.ScyllaDBManagerClusterRegistrationStatus{
+			Conditions: []metav1.Condition{
+				{Type: scyllav1alpha1.ScyllaDBManagerClusterRegistrationManagerAPIConnectionVerifiedCondition, Status: metav1.ConditionTrue, ObservedGeneration: 3},
+				{Type: scyllav1alpha1.ScyllaDBManagerClusterRegistrationDatabaseConnectionVerifiedCondition, Status: metav1.ConditionTrue, ObservedGeneration: 3},
+			},
+		},
+	}
+	if !scyllaDBManagerClusterRegistrationReadyForTasks(smcr) {
+		t.Fatal("expected current verified conditions to allow Manager task reconciliation")
 	}
 }
 

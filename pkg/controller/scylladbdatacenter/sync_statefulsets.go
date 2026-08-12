@@ -515,6 +515,7 @@ func (sdcc *Controller) syncStatefulSets(
 	statefulSets map[string]*appsv1.StatefulSet,
 	services map[string]*corev1.Service,
 	configMaps map[string]*corev1.ConfigMap,
+	secrets map[string]*corev1.Secret,
 ) ([]metav1.Condition, error) {
 	var err error
 	var progressingConditions []metav1.Condition
@@ -533,7 +534,7 @@ func (sdcc *Controller) syncStatefulSets(
 		return progressingConditions, nil
 	}
 
-	inputsHash, err := hash.HashObjects(managedScyllaDBConfigCM.Data)
+	inputsHash, err := statefulSetInputsHash(sdc, managedScyllaDBConfigCM, secrets)
 	if err != nil {
 		return progressingConditions, fmt.Errorf("can't hash inputs: %w", err)
 	}
@@ -1156,6 +1157,21 @@ func (sdcc *Controller) syncStatefulSets(
 	}
 
 	return progressingConditions, nil
+}
+
+func statefulSetInputsHash(sdc *scyllav1alpha1.ScyllaDBDatacenter, managedScyllaDBConfigCM *corev1.ConfigMap, secrets map[string]*corev1.Secret) (string, error) {
+	var agentServingCertificateResourceVersion string
+	if sdc.Spec.ScyllaDBManagerAgent != nil {
+		servingCertificateSecret, found := secrets[naming.GetScyllaClusterLocalServingCertName(sdc.Name)]
+		if found {
+			agentServingCertificateResourceVersion = servingCertificateSecret.ResourceVersion
+		}
+	}
+
+	// Scylla Manager Agent loads its serving identity at process start. Including the
+	// non-secret Secret resourceVersion in the pod-template input hash rolls the Agent
+	// when the Operator rotates its serving certificate.
+	return hash.HashObjects(managedScyllaDBConfigCM.Data, agentServingCertificateResourceVersion)
 }
 
 func (sdcc *Controller) setStatefulSetsAvailableStatusCondition(

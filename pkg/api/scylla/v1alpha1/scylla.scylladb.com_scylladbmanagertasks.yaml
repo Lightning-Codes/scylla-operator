@@ -201,14 +201,22 @@ spec:
                 scyllaDBClusterRef:
                   description: |-
                     scyllaDBClusterRef is a typed reference to the target cluster in the same namespace.
-                    Supported kinds are ScyllaDBCluster and ScyllaDBDatacenter in scylla.scylladb.com group.
+                    Supported kinds are ScyllaCluster, ScyllaDBCluster, and ScyllaDBDatacenter in the
+                    scylla.scylladb.com API group.
                   properties:
                     kind:
                       description: kind specifies the type of the resource.
+                      enum:
+                        - ScyllaCluster
+                        - ScyllaDBCluster
+                        - ScyllaDBDatacenter
                       type: string
                     name:
                       description: name specifies the name of the resource in the same namespace.
                       type: string
+                  required:
+                    - kind
+                    - name
                   type: object
                 type:
                   description: type specifies the type of the task.

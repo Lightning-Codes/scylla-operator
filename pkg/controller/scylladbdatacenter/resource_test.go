@@ -831,16 +831,19 @@ func runTestStatefulSetForRack(t *testing.T) {
 								},
 							}
 
-							if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
-								volumes = append(volumes, []corev1.Volume{
-									{
-										Name: "scylladb-serving-certs",
-										VolumeSource: corev1.VolumeSource{
-											Secret: &corev1.SecretVolumeSource{
-												SecretName: "basic-local-serving-certs",
-											},
+							if shouldManageScyllaServingCertificates(newBasicScyllaDBDatacenter()) {
+								volumes = append(volumes, corev1.Volume{
+									Name: "scylladb-serving-certs",
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "basic-local-serving-certs",
 										},
 									},
+								})
+							}
+
+							if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
+								volumes = append(volumes, []corev1.Volume{
 									{
 										Name: "scylladb-client-ca",
 										VolumeSource: corev1.VolumeSource{
@@ -1288,9 +1291,9 @@ printf '{"L":"INFO","T":"%s","M":"Ignited. Starting ScyllaDB Manager Agent"}\n' 
 
 exec scylla-manager-agent \
 -c "/etc/scylla-manager-agent/scylla-manager-agent.yaml" \
--c "/mnt/scylla-managed-agent-config/scylla-manager-agent.yaml" \
 -c "/mnt/scylla-agent-config/scylla-manager-agent.yaml" \
--c "/mnt/scylla-agent-config/auth-token.yaml"
+-c "/mnt/scylla-agent-config/auth-token.yaml" \
+-c "/mnt/scylla-managed-agent-config/scylla-manager-agent.yaml"
 `),
 								},
 								Ports: []corev1.ContainerPort{
@@ -1332,6 +1335,11 @@ exec scylla-manager-agent \
 									{
 										Name:      "shared",
 										MountPath: "/mnt/shared",
+										ReadOnly:  true,
+									},
+									{
+										Name:      "scylladb-serving-certs",
+										MountPath: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs",
 										ReadOnly:  true,
 									},
 								},
@@ -4792,6 +4800,11 @@ scylla:
   api_address: "127.0.0.1"
   api_port: 10000
 
+# Serve the Manager Agent API with the Operator-issued Scylla serving certificate.
+# The certificate includes the shared client Service DNS name and member/Pod addresses.
+tls_cert_file: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.crt"
+tls_key_file: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.key"
+
 # Default ScyllaDB Manager Agent configuration
 # Additional configuration can be provided via customConfigSecretRef
 `, "\n"),
@@ -4853,6 +4866,11 @@ scylla:
 scylla:
   api_address: "::"
   api_port: 10000
+
+# Serve the Manager Agent API with the Operator-issued Scylla serving certificate.
+# The certificate includes the shared client Service DNS name and member/Pod addresses.
+tls_cert_file: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.crt"
+tls_key_file: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.key"
 
 # Default ScyllaDB Manager Agent configuration
 # Additional configuration can be provided via customConfigSecretRef

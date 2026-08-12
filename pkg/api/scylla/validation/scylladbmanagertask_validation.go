@@ -12,6 +12,7 @@ import (
 
 	"github.com/gobwas/glob"
 	"github.com/robfig/cron/v3"
+	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	oslices "github.com/scylladb/scylla-operator/pkg/helpers/slices"
 	"github.com/scylladb/scylla-operator/pkg/naming"
@@ -32,6 +33,7 @@ var (
 
 var (
 	scyllaDBManagerTaskSupportedLocalScyllaDBReferenceKinds = []string{
+		scyllav1.ScyllaClusterGVK.Kind,
 		scyllav1alpha1.ScyllaDBDatacenterGVK.Kind,
 		scyllav1alpha1.ScyllaDBClusterGVK.Kind,
 	}

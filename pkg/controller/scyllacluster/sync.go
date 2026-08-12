@@ -258,7 +258,7 @@ func (scmc *Controller) sync(ctx context.Context, key string) error {
 	if err != nil {
 		objectErrs = append(objectErrs, fmt.Errorf("can't list ScyllaDBManagerClusterRegistrations: %w", err))
 	}
-	scyllaDBManagerClusterRegistrations, err = filterScyllaDBManagerClusterRegistrations(sc, scyllaDBDatacenterMap, scyllaDBManagerClusterRegistrations)
+	scyllaDBManagerClusterRegistrations, err = filterScyllaDBManagerClusterRegistrations(sc, scyllaDBManagerClusterRegistrations)
 	if err != nil {
 		objectErrs = append(objectErrs, fmt.Errorf("can't filter ScyllaDBManagerClusterRegistrations: %w", err))
 	}
@@ -375,19 +375,11 @@ func (scmc *Controller) sync(ctx context.Context, key string) error {
 
 func filterScyllaDBManagerClusterRegistrations(
 	sc *scyllav1.ScyllaCluster,
-	scyllaDBDatacenterMap map[string]*scyllav1alpha1.ScyllaDBDatacenter,
 	scyllaDBManagerClusterRegistrations []*scyllav1alpha1.ScyllaDBManagerClusterRegistration,
 ) ([]*scyllav1alpha1.ScyllaDBManagerClusterRegistration, error) {
-	var smcrs []*scyllav1alpha1.ScyllaDBManagerClusterRegistration
-
-	sdc, ok := scyllaDBDatacenterMap[sc.Name]
-	if !ok {
-		return smcrs, nil
-	}
-
-	smcrName, err := naming.ScyllaDBManagerClusterRegistrationNameForScyllaDBDatacenter(sdc)
+	smcrName, err := naming.ScyllaDBManagerClusterRegistrationNameForScyllaCluster(sc)
 	if err != nil {
-		return smcrs, fmt.Errorf("can't get ScyllaDBManagerClusterRegistration name: %w", err)
+		return nil, fmt.Errorf("can't get ScyllaDBManagerClusterRegistration name: %w", err)
 	}
 
 	return oslices.Filter(scyllaDBManagerClusterRegistrations, func(smcr *scyllav1alpha1.ScyllaDBManagerClusterRegistration) bool {

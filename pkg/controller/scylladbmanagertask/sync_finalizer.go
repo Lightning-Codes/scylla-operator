@@ -12,6 +12,7 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/helpers/managerclienterrors"
 	"github.com/scylladb/scylla-operator/pkg/naming"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
@@ -60,9 +61,21 @@ func (smtc *Controller) syncFinalizer(ctx context.Context, smt *scyllav1alpha1.S
 		return progressingConditions, nil
 	}
 
+	managerAPICondition := apimeta.FindStatusCondition(smcr.Status.Conditions, scyllav1alpha1.ScyllaDBManagerClusterRegistrationManagerAPIConnectionVerifiedCondition)
+	if managerAPICondition == nil || managerAPICondition.Status != metav1.ConditionTrue || managerAPICondition.ObservedGeneration != smcr.Generation {
+		progressingConditions = append(progressingConditions, metav1.Condition{
+			Type:               scyllaDBManagerTaskFinalizerProgressingCondition,
+			Status:             metav1.ConditionTrue,
+			ObservedGeneration: smt.Generation,
+			Reason:             "AwaitingVerifiedScyllaDBManagerAPIConnection",
+			Message:            fmt.Sprintf("Awaiting a current ManagerAPIConnectionVerified=True condition on ScyllaDBManagerClusterRegistration %q before finalizing the Manager task.", naming.ObjRef(smcr)),
+		})
+		return progressingConditions, nil
+	}
+
 	clusterID := *smcr.Status.ClusterID
 
-	managerClient, err := controllerhelpers.GetScyllaDBManagerClient(ctx, smcr)
+	managerClient, err := controllerhelpers.GetScyllaDBManagerClient(ctx, smtc.kubeClient, smcr)
 	if err != nil {
 		return progressingConditions, fmt.Errorf("can't get ScyllaDB Manager client: %w", err)
 	}

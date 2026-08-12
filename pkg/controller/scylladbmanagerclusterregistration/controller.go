@@ -8,9 +8,12 @@ import (
 	"sync"
 	"time"
 
+	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	scyllaclient "github.com/scylladb/scylla-operator/pkg/client/scylla/clientset/versioned"
+	scyllav1informers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions/scylla/v1"
 	scyllav1alpha1informers "github.com/scylladb/scylla-operator/pkg/client/scylla/informers/externalversions/scylla/v1alpha1"
+	scyllav1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1"
 	scyllav1alpha1listers "github.com/scylladb/scylla-operator/pkg/client/scylla/listers/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/controllertools"
@@ -43,6 +46,12 @@ const (
 	// Contrary to what it should be, this needs to be quite high.
 	// FIXME: https://github.com/scylladb/scylla-operator/issues/2686
 	maxSyncDuration = 2 * time.Minute
+
+	// managerVerificationPollInterval bounds how long a previously verified registration
+	// can retain a stale condition after Manager's per-node health changes without a
+	// Kubernetes event. Verified registrations are polled too so task gating fails closed
+	// when a later database or Agent handshake starts failing.
+	managerVerificationPollInterval = 15 * time.Second
 )
 
 var (
@@ -54,11 +63,14 @@ type Controller struct {
 	kubeClient   kubernetes.Interface
 	scyllaClient scyllaclient.Interface
 
-	scyllaDBManagerClusterRegistrationLister scyllav1alpha1listers.ScyllaDBManagerClusterRegistrationLister
-	scyllaDBDatacenterLister                 scyllav1alpha1listers.ScyllaDBDatacenterLister
-	scyllaDBClusterLister                    scyllav1alpha1listers.ScyllaDBClusterLister
-	secretLister                             corev1listers.SecretLister
-	namespaceLister                          corev1listers.NamespaceLister
+	scyllaDBManagerClusterRegistrationLister   scyllav1alpha1listers.ScyllaDBManagerClusterRegistrationLister
+	scyllaClusterLister                        scyllav1listers.ScyllaClusterLister
+	scyllaDBDatacenterLister                   scyllav1alpha1listers.ScyllaDBDatacenterLister
+	scyllaDBClusterLister                      scyllav1alpha1listers.ScyllaDBClusterLister
+	secretLister                               corev1listers.SecretLister
+	configMapLister                            corev1listers.ConfigMapLister
+	namespaceLister                            corev1listers.NamespaceLister
+	scyllaDBManagerClusterRegistrationInformer scyllav1alpha1informers.ScyllaDBManagerClusterRegistrationInformer
 
 	cachesToSync []cache.InformerSynced
 
@@ -72,9 +84,11 @@ func NewController(
 	kubeClient kubernetes.Interface,
 	scyllaClient scyllaclient.Interface,
 	scyllaDBManagerClusterRegistrationInformer scyllav1alpha1informers.ScyllaDBManagerClusterRegistrationInformer,
+	scyllaClusterInformer scyllav1informers.ScyllaClusterInformer,
 	scyllaDBDatacenterInformer scyllav1alpha1informers.ScyllaDBDatacenterInformer,
 	scyllaDBClusterInformer scyllav1alpha1informers.ScyllaDBClusterInformer,
 	secretInformer corev1informers.SecretInformer,
+	configMapInformer corev1informers.ConfigMapInformer,
 	namespaceInformer corev1informers.NamespaceInformer,
 ) (*Controller, error) {
 	eventBroadcaster := record.NewBroadcaster()
@@ -85,17 +99,22 @@ func NewController(
 		kubeClient:   kubeClient,
 		scyllaClient: scyllaClient,
 
-		scyllaDBManagerClusterRegistrationLister: scyllaDBManagerClusterRegistrationInformer.Lister(),
-		scyllaDBDatacenterLister:                 scyllaDBDatacenterInformer.Lister(),
-		scyllaDBClusterLister:                    scyllaDBClusterInformer.Lister(),
-		secretLister:                             secretInformer.Lister(),
-		namespaceLister:                          namespaceInformer.Lister(),
+		scyllaDBManagerClusterRegistrationLister:   scyllaDBManagerClusterRegistrationInformer.Lister(),
+		scyllaClusterLister:                        scyllaClusterInformer.Lister(),
+		scyllaDBDatacenterLister:                   scyllaDBDatacenterInformer.Lister(),
+		scyllaDBClusterLister:                      scyllaDBClusterInformer.Lister(),
+		secretLister:                               secretInformer.Lister(),
+		configMapLister:                            configMapInformer.Lister(),
+		namespaceLister:                            namespaceInformer.Lister(),
+		scyllaDBManagerClusterRegistrationInformer: scyllaDBManagerClusterRegistrationInformer,
 
 		cachesToSync: []cache.InformerSynced{
 			scyllaDBManagerClusterRegistrationInformer.Informer().HasSynced,
+			scyllaClusterInformer.Informer().HasSynced,
 			scyllaDBDatacenterInformer.Informer().HasSynced,
 			scyllaDBClusterInformer.Informer().HasSynced,
 			secretInformer.Informer().HasSynced,
+			configMapInformer.Informer().HasSynced,
 			namespaceInformer.Informer().HasSynced,
 		},
 
@@ -107,6 +126,14 @@ func NewController(
 				Name: "scylladbmanagerclusterregistration",
 			},
 		),
+	}
+
+	if err := scyllaDBManagerClusterRegistrationInformer.Informer().AddIndexers(cache.Indexers{
+		scyllaDBManagerClusterRegistrationBySecretIndexName:    indexScyllaDBManagerClusterRegistrationBySecret,
+		scyllaDBManagerClusterRegistrationByConfigMapIndexName: indexScyllaDBManagerClusterRegistrationByConfigMap,
+		scyllaDBManagerClusterRegistrationByLocalRefIndexName:  indexScyllaDBManagerClusterRegistrationByLocalRef,
+	}); err != nil {
+		return nil, fmt.Errorf("can't add indexes to ScyllaDBManagerClusterRegistration informer: %w", err)
 	}
 
 	var err error
@@ -134,6 +161,12 @@ func NewController(
 		DeleteFunc: smcrc.deleteScyllaDBDatacenter,
 	})
 
+	scyllaClusterInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    smcrc.addScyllaCluster,
+		UpdateFunc: smcrc.updateScyllaCluster,
+		DeleteFunc: smcrc.deleteScyllaCluster,
+	})
+
 	scyllaDBClusterInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    smcrc.addScyllaDBCluster,
 		UpdateFunc: smcrc.updateScyllaDBCluster,
@@ -144,6 +177,12 @@ func NewController(
 		AddFunc:    smcrc.addSecret,
 		UpdateFunc: smcrc.updateSecret,
 		DeleteFunc: smcrc.deleteSecret,
+	})
+
+	configMapInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    smcrc.addConfigMap,
+		UpdateFunc: smcrc.updateConfigMap,
+		DeleteFunc: smcrc.deleteConfigMap,
 	})
 
 	namespaceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -301,10 +340,33 @@ func (smcrc *Controller) deleteScyllaDBCluster(obj interface{}) {
 	)
 }
 
+func (smcrc *Controller) addScyllaCluster(obj interface{}) {
+	smcrc.handlers.HandleAdd(
+		obj.(*scyllav1.ScyllaCluster),
+		smcrc.enqueueThroughScyllaCluster,
+	)
+}
+
+func (smcrc *Controller) updateScyllaCluster(old, cur interface{}) {
+	smcrc.handlers.HandleUpdate(
+		old.(*scyllav1.ScyllaCluster),
+		cur.(*scyllav1.ScyllaCluster),
+		smcrc.enqueueThroughScyllaCluster,
+		smcrc.deleteScyllaCluster,
+	)
+}
+
+func (smcrc *Controller) deleteScyllaCluster(obj interface{}) {
+	smcrc.handlers.HandleDelete(
+		obj,
+		smcrc.enqueueThroughScyllaCluster,
+	)
+}
+
 func (smcrc *Controller) addSecret(obj interface{}) {
 	smcrc.handlers.HandleAdd(
 		obj.(*corev1.Secret),
-		smcrc.enqueueThroughOwner,
+		combineRegistrationEnqueueFuncs(smcrc.enqueueBySecretRef, smcrc.enqueueThroughOwner),
 	)
 }
 
@@ -312,15 +374,38 @@ func (smcrc *Controller) updateSecret(old, cur interface{}) {
 	smcrc.handlers.HandleUpdate(
 		old.(*corev1.Secret),
 		cur.(*corev1.Secret),
-		smcrc.enqueueThroughOwner,
+		combineRegistrationEnqueueFuncs(smcrc.enqueueBySecretRef, smcrc.enqueueThroughOwner),
 		smcrc.deleteSecret,
 	)
 }
 
 func (smcrc *Controller) deleteSecret(obj interface{}) {
 	smcrc.handlers.HandleDelete(
-		obj.(*corev1.Secret),
-		smcrc.enqueueThroughOwner,
+		obj,
+		combineRegistrationEnqueueFuncs(smcrc.enqueueBySecretRef, smcrc.enqueueThroughOwner),
+	)
+}
+
+func (smcrc *Controller) addConfigMap(obj interface{}) {
+	smcrc.handlers.HandleAdd(
+		obj.(*corev1.ConfigMap),
+		smcrc.enqueueByConfigMapRef,
+	)
+}
+
+func (smcrc *Controller) updateConfigMap(old, cur interface{}) {
+	smcrc.handlers.HandleUpdate(
+		old.(*corev1.ConfigMap),
+		cur.(*corev1.ConfigMap),
+		smcrc.enqueueByConfigMapRef,
+		smcrc.deleteConfigMap,
+	)
+}
+
+func (smcrc *Controller) deleteConfigMap(obj interface{}) {
+	smcrc.handlers.HandleDelete(
+		obj,
+		smcrc.enqueueByConfigMapRef,
 	)
 }
 
@@ -349,41 +434,36 @@ func (smcrc *Controller) deleteNamespace(obj interface{}) {
 
 func (smcrc *Controller) enqueueThroughScyllaDBDatacenter(depth int, obj kubeinterfaces.ObjectInterface, op controllerhelpers.HandlerOperationType) {
 	sdc := obj.(*scyllav1alpha1.ScyllaDBDatacenter)
-
-	smcrName, err := naming.ScyllaDBManagerClusterRegistrationNameForScyllaDBDatacenter(sdc)
-	if err != nil {
-		apimachineryutilruntime.HandleError(err)
-		return
-	}
-
-	smcr, err := smcrc.scyllaDBManagerClusterRegistrationLister.ScyllaDBManagerClusterRegistrations(sdc.Namespace).Get(smcrName)
-	if err != nil {
-		return
-	}
-
-	klog.V(4).InfoSDepth(depth, "Enqueuing ScyllaDBManagerClusterRegistration for ScyllaDBDatacenter", "ScyllaDBDatacenter", klog.KObj(sdc), "ScyllaDBManagerClusterRegistration", klog.KObj(smcr))
-	smcrc.handlers.Enqueue(depth+1, smcr, op)
+	smcrc.enqueueThroughLocalScyllaDBReference(depth, sdc, scyllav1alpha1.ScyllaDBDatacenterGVK.Kind, op)
 }
 
 func (smcrc *Controller) enqueueThroughScyllaDBCluster(depth int, obj kubeinterfaces.ObjectInterface, op controllerhelpers.HandlerOperationType) {
 	sc := obj.(*scyllav1alpha1.ScyllaDBCluster)
+	smcrc.enqueueThroughLocalScyllaDBReference(depth, sc, scyllav1alpha1.ScyllaDBClusterGVK.Kind, op)
+}
 
-	smcrName, err := naming.ScyllaDBManagerClusterRegistrationNameForScyllaDBCluster(sc)
+func (smcrc *Controller) enqueueThroughScyllaCluster(depth int, obj kubeinterfaces.ObjectInterface, op controllerhelpers.HandlerOperationType) {
+	sc := obj.(*scyllav1.ScyllaCluster)
+	smcrc.enqueueThroughLocalScyllaDBReference(depth, sc, scyllav1.ScyllaClusterGVK.Kind, op)
+}
+
+func (smcrc *Controller) enqueueThroughLocalScyllaDBReference(depth int, obj kubeinterfaces.ObjectInterface, kind string, op controllerhelpers.HandlerOperationType) {
+	key := localScyllaDBReferenceKey(obj.GetNamespace(), kind, obj.GetName())
+	indexedRegistrations, err := smcrc.scyllaDBManagerClusterRegistrationInformer.Informer().GetIndexer().ByIndex(scyllaDBManagerClusterRegistrationByLocalRefIndexName, key)
 	if err != nil {
-		apimachineryutilruntime.HandleError(err)
+		apimachineryutilruntime.HandleError(fmt.Errorf("can't get ScyllaDBManagerClusterRegistrations from local-reference index for %q: %w", key, err))
 		return
 	}
 
-	smcr, err := smcrc.scyllaDBManagerClusterRegistrationLister.ScyllaDBManagerClusterRegistrations(sc.Namespace).Get(smcrName)
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			apimachineryutilruntime.HandleError(err)
+	for _, indexedRegistration := range indexedRegistrations {
+		smcr, ok := indexedRegistration.(*scyllav1alpha1.ScyllaDBManagerClusterRegistration)
+		if !ok {
+			apimachineryutilruntime.HandleError(fmt.Errorf("expected %T, got %T", &scyllav1alpha1.ScyllaDBManagerClusterRegistration{}, indexedRegistration))
+			continue
 		}
-		return
+		klog.V(4).InfoSDepth(depth, "Enqueuing ScyllaDBManagerClusterRegistration for referenced local ScyllaDB resource", "ReferencedObject", klog.KObj(obj), "ScyllaDBManagerClusterRegistration", klog.KObj(smcr))
+		smcrc.handlers.Enqueue(depth+1, smcr, op)
 	}
-
-	klog.V(4).InfoSDepth(depth, "Enqueuing ScyllaDBManagerClusterRegistration for ScyllaDBCluster", "ScyllaDBCluster", klog.KObj(sc), "ScyllaDBManagerClusterRegistration", klog.KObj(smcr))
-	smcrc.handlers.Enqueue(depth+1, smcr, op)
 }
 
 func (smcrc *Controller) enqueueThroughOwner(depth int, obj kubeinterfaces.ObjectInterface, op controllerhelpers.HandlerOperationType) {
@@ -393,6 +473,16 @@ func (smcrc *Controller) enqueueThroughOwner(depth int, obj kubeinterfaces.Objec
 	}
 
 	switch controllerRef.Kind {
+	case scyllav1.ScyllaClusterGVK.Kind:
+		sc, err := smcrc.scyllaClusterLister.ScyllaClusters(obj.GetNamespace()).Get(controllerRef.Name)
+		if err != nil {
+			apimachineryutilruntime.HandleError(err)
+			return
+		}
+
+		smcrc.enqueueThroughScyllaCluster(depth+1, sc, op)
+		return
+
 	case scyllav1alpha1.ScyllaDBDatacenterGVK.Kind:
 		sdc, err := smcrc.scyllaDBDatacenterLister.ScyllaDBDatacenters(obj.GetNamespace()).Get(controllerRef.Name)
 		if err != nil {
@@ -435,6 +525,52 @@ func (smcrc *Controller) enqueueThroughGlobalScyllaDBManagerNamespace(depth int,
 
 	klog.V(4).InfoS("Enqueuing ScyllaDBManagerClusterRegistrations for global ScyllaDB Manager Namespace")
 	for _, smcr := range smcrs {
+		smcrc.handlers.Enqueue(depth+1, smcr, op)
+	}
+}
+
+func combineRegistrationEnqueueFuncs(funcs ...controllerhelpers.EnqueueFuncType) controllerhelpers.EnqueueFuncType {
+	return func(depth int, obj kubeinterfaces.ObjectInterface, op controllerhelpers.HandlerOperationType) {
+		for _, fn := range funcs {
+			fn(depth+1, obj, op)
+		}
+	}
+}
+
+func (smcrc *Controller) enqueueBySecretRef(depth int, obj kubeinterfaces.ObjectInterface, op controllerhelpers.HandlerOperationType) {
+	if _, ok := obj.(*corev1.Secret); !ok {
+		apimachineryutilruntime.HandleError(fmt.Errorf("expected %T, got %T", &corev1.Secret{}, obj))
+		return
+	}
+
+	smcrc.enqueueByConnectionMaterialRef(depth, obj, op, scyllaDBManagerClusterRegistrationBySecretIndexName)
+}
+
+func (smcrc *Controller) enqueueByConfigMapRef(depth int, obj kubeinterfaces.ObjectInterface, op controllerhelpers.HandlerOperationType) {
+	if _, ok := obj.(*corev1.ConfigMap); !ok {
+		apimachineryutilruntime.HandleError(fmt.Errorf("expected %T, got %T", &corev1.ConfigMap{}, obj))
+		return
+	}
+
+	smcrc.enqueueByConnectionMaterialRef(depth, obj, op, scyllaDBManagerClusterRegistrationByConfigMapIndexName)
+}
+
+func (smcrc *Controller) enqueueByConnectionMaterialRef(depth int, obj kubeinterfaces.ObjectInterface, op controllerhelpers.HandlerOperationType, indexName string) {
+	key := namespacedReferenceKey(obj.GetNamespace(), obj.GetName())
+	indexedRegistrations, err := smcrc.scyllaDBManagerClusterRegistrationInformer.Informer().GetIndexer().ByIndex(indexName, key)
+	if err != nil {
+		apimachineryutilruntime.HandleError(fmt.Errorf("can't get ScyllaDBManagerClusterRegistrations from index %q for %q: %w", indexName, key, err))
+		return
+	}
+
+	for _, indexedRegistration := range indexedRegistrations {
+		smcr, ok := indexedRegistration.(*scyllav1alpha1.ScyllaDBManagerClusterRegistration)
+		if !ok {
+			apimachineryutilruntime.HandleError(fmt.Errorf("expected %T, got %T", &scyllav1alpha1.ScyllaDBManagerClusterRegistration{}, indexedRegistration))
+			continue
+		}
+
+		klog.V(4).InfoSDepth(depth, "Enqueuing ScyllaDBManagerClusterRegistration for rotated connection material", "ReferencedObject", klog.KObj(obj), "ScyllaDBManagerClusterRegistration", klog.KObj(smcr))
 		smcrc.handlers.Enqueue(depth+1, smcr, op)
 	}
 }

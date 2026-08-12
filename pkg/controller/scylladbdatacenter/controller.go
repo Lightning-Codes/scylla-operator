@@ -78,6 +78,7 @@ type Controller struct {
 	ingressLister                             networkingv1listers.IngressLister
 	scyllaDBDatacenterLister                  scyllav1alpha1listers.ScyllaDBDatacenterLister
 	jobLister                                 batchv1listers.JobLister
+	scyllaOperatorConfigLister                scyllav1alpha1listers.ScyllaOperatorConfigLister
 	scyllaDBDatacenterNodesStatusReportLister scyllav1alpha1listers.ScyllaDBDatacenterNodesStatusReportLister
 
 	cachesToSync []cache.InformerSynced
@@ -115,6 +116,7 @@ func NewController(
 	pdbInformer policyv1informers.PodDisruptionBudgetInformer,
 	ingressInformer networkingv1informers.IngressInformer,
 	jobInformer batchv1informers.JobInformer,
+	scyllaOperatorConfigInformer scyllav1alpha1informers.ScyllaOperatorConfigInformer,
 	scyllaDBDatacenterInformer scyllav1alpha1informers.ScyllaDBDatacenterInformer,
 	scyllaDBDatacenterNodesStatusReportInformer scyllav1alpha1informers.ScyllaDBDatacenterNodesStatusReportInformer,
 	operatorImage string,
@@ -133,17 +135,18 @@ func NewController(
 		kubeClient:   kubeClient,
 		scyllaClient: scyllaClient,
 
-		podLister:                podInformer.Lister(),
-		serviceLister:            serviceInformer.Lister(),
-		secretLister:             secretInformer.Lister(),
-		configMapLister:          configMapInformer.Lister(),
-		serviceAccountLister:     serviceAccountInformer.Lister(),
-		roleBindingLister:        roleBindingInformer.Lister(),
-		statefulSetLister:        statefulSetInformer.Lister(),
-		pdbLister:                pdbInformer.Lister(),
-		ingressLister:            ingressInformer.Lister(),
-		scyllaDBDatacenterLister: scyllaDBDatacenterInformer.Lister(),
-		jobLister:                jobInformer.Lister(),
+		podLister:                  podInformer.Lister(),
+		serviceLister:              serviceInformer.Lister(),
+		secretLister:               secretInformer.Lister(),
+		configMapLister:            configMapInformer.Lister(),
+		serviceAccountLister:       serviceAccountInformer.Lister(),
+		roleBindingLister:          roleBindingInformer.Lister(),
+		statefulSetLister:          statefulSetInformer.Lister(),
+		pdbLister:                  pdbInformer.Lister(),
+		ingressLister:              ingressInformer.Lister(),
+		scyllaDBDatacenterLister:   scyllaDBDatacenterInformer.Lister(),
+		jobLister:                  jobInformer.Lister(),
+		scyllaOperatorConfigLister: scyllaOperatorConfigInformer.Lister(),
 		scyllaDBDatacenterNodesStatusReportLister: scyllaDBDatacenterNodesStatusReportInformer.Lister(),
 
 		cachesToSync: []cache.InformerSynced{
@@ -158,6 +161,7 @@ func NewController(
 			ingressInformer.Informer().HasSynced,
 			scyllaDBDatacenterInformer.Informer().HasSynced,
 			jobInformer.Informer().HasSynced,
+			scyllaOperatorConfigInformer.Informer().HasSynced,
 			scyllaDBDatacenterNodesStatusReportInformer.Informer().HasSynced,
 		},
 
@@ -265,6 +269,12 @@ func NewController(
 		AddFunc:    sdcc.addJob,
 		UpdateFunc: sdcc.updateJob,
 		DeleteFunc: sdcc.deleteJob,
+	})
+
+	scyllaOperatorConfigInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sdcc.addScyllaOperatorConfig,
+		UpdateFunc: sdcc.updateScyllaOperatorConfig,
+		DeleteFunc: sdcc.deleteScyllaOperatorConfig,
 	})
 
 	scyllaDBDatacenterNodesStatusReportInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -638,6 +648,29 @@ func (sdcc *Controller) deleteScyllaDBDatacenter(obj interface{}) {
 	sdcc.handlers.HandleDelete(
 		obj,
 		sdcc.handlers.Enqueue,
+	)
+}
+
+func (sdcc *Controller) addScyllaOperatorConfig(obj interface{}) {
+	sdcc.handlers.HandleAdd(
+		obj.(*scyllav1alpha1.ScyllaOperatorConfig),
+		sdcc.handlers.EnqueueAll,
+	)
+}
+
+func (sdcc *Controller) updateScyllaOperatorConfig(old, cur interface{}) {
+	sdcc.handlers.HandleUpdate(
+		old.(*scyllav1alpha1.ScyllaOperatorConfig),
+		cur.(*scyllav1alpha1.ScyllaOperatorConfig),
+		sdcc.handlers.EnqueueAll,
+		sdcc.deleteScyllaOperatorConfig,
+	)
+}
+
+func (sdcc *Controller) deleteScyllaOperatorConfig(obj interface{}) {
+	sdcc.handlers.HandleDelete(
+		obj,
+		sdcc.handlers.EnqueueAll,
 	)
 }
 

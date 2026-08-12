@@ -13,6 +13,11 @@ data:
       api_address: "127.0.0.1"
       {{- end }}
       api_port: 10000
+
+    # Serve the Manager Agent API with the Operator-issued Scylla serving certificate.
+    # The certificate includes the shared client Service DNS name and member/Pod addresses.
+    tls_cert_file: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.crt"
+    tls_key_file: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs/tls.key"
     
     # Default ScyllaDB Manager Agent configuration
     # Additional configuration can be provided via customConfigSecretRef

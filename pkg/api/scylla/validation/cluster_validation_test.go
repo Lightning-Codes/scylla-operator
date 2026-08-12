@@ -13,6 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"sigs.k8s.io/yaml"
 )
 
 func TestValidateScyllaCluster(t *testing.T) {
@@ -1097,6 +1098,120 @@ func TestValidateScyllaCluster(t *testing.T) {
 				t.Errorf("expected and actual error strings differ: %s", cmp.Diff(test.expectedErrorString, errStr))
 			}
 		})
+	}
+}
+
+func TestSophenaStableScyllaClusterContract(t *testing.T) {
+	t.Parallel()
+
+	const manifest = `
+apiVersion: scylla.scylladb.com/v1
+kind: ScyllaCluster
+metadata:
+  name: scylladb
+  namespace: sophena
+spec:
+  repository: docker.io/scylladb/scylla
+  version: 2026.1.10@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  agentRepository: docker.io/scylladb/scylla-manager-agent
+  agentVersion: 3.6.0@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  alternator:
+    writeIsolation: only_rmw_uses_lwt
+    insecureEnableHTTP: false
+    insecureDisableAuthorization: false
+    servingCertificate:
+      type: OperatorManaged
+  exposeOptions:
+    nodeService:
+      type: ClusterIP
+    broadcastOptions:
+      nodes:
+        type: ServiceClusterIP
+      clients:
+        type: ServiceClusterIP
+  datacenter:
+    name: dc
+    racks:
+    - name: ad-1
+      members: 1
+      storage:
+        capacity: 100Gi
+        storageClassName: oci-bv
+      resources:
+        limits:
+          cpu: "3"
+          memory: 16Gi
+      volumes:
+      - name: secrets-store-inline
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: scylladb-secrets
+      agentVolumeMounts:
+      - name: secrets-store-inline
+        mountPath: /mnt/secrets-store
+        readOnly: true
+      scyllaAgentConfig: scylla-agent-config
+    - name: ad-2
+      members: 1
+      storage:
+        capacity: 100Gi
+        storageClassName: oci-bv
+      resources:
+        limits:
+          cpu: "3"
+          memory: 16Gi
+      volumes:
+      - name: secrets-store-inline
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: scylladb-secrets
+      agentVolumeMounts:
+      - name: secrets-store-inline
+        mountPath: /mnt/secrets-store
+        readOnly: true
+      scyllaAgentConfig: scylla-agent-config
+    - name: ad-3
+      members: 1
+      storage:
+        capacity: 100Gi
+        storageClassName: oci-bv
+      resources:
+        limits:
+          cpu: "3"
+          memory: 16Gi
+      volumes:
+      - name: secrets-store-inline
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: scylladb-secrets
+      agentVolumeMounts:
+      - name: secrets-store-inline
+        mountPath: /mnt/secrets-store
+        readOnly: true
+      scyllaAgentConfig: scylla-agent-config
+`
+
+	cluster := &scyllav1.ScyllaCluster{}
+	if err := yaml.UnmarshalStrict([]byte(manifest), cluster); err != nil {
+		t.Fatalf("stable ScyllaCluster manifest does not match the compiled v1 API: %v", err)
+	}
+	if errs := validation.ValidateScyllaCluster(cluster); len(errs) != 0 {
+		t.Fatalf("stable ScyllaCluster manifest fails webhook validation: %v", errs)
+	}
+	if len(cluster.Spec.Datacenter.Racks) != 3 {
+		t.Fatalf("expected three availability-domain racks, got %d", len(cluster.Spec.Datacenter.Racks))
+	}
+	for i, rack := range cluster.Spec.Datacenter.Racks {
+		expectedName := fmt.Sprintf("ad-%d", i+1)
+		if rack.Name != expectedName || rack.ScyllaAgentConfig != "scylla-agent-config" || len(rack.Volumes) != 1 || len(rack.AgentVolumeMounts) != 1 {
+			t.Fatalf("rack %d doesn't preserve the stable CSI/Agent contract: %#v", i, rack)
+		}
 	}
 }
 

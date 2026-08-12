@@ -9,7 +9,6 @@ import (
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/naming"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
@@ -26,27 +25,10 @@ func (smcrc *Controller) syncFinalizer(ctx context.Context, smcr *scyllav1alpha1
 
 	klog.V(4).InfoS("Finalizing object", "ScyllaDBManagerClusterRegistration", klog.KObj(smcr), "UID", smcr.UID)
 
-	// Due to the lack of an ownership relation between the global ScyllaDB Manager instance and ScyllaDBManagerClusterRegistration objects,
-	// global ScyllaDB Manager instance can be deleted independently, in which case ScyllaDBManagerClusterRegistration can get stuck on finalization as the manager client connection can no longer be established.
-	// We treat the `scylla-manager` namespace as the umbrella resource for the global ScyllaDB Manager instance.
-	// Clusters are considered deleted from global ScyllaDB Manager instance's state when `scylla-manager` namespace is not present.
-	if controllerhelpers.IsManagedByGlobalScyllaDBManagerInstance(smcr) {
-		_, err = smcrc.namespaceLister.Get(naming.ScyllaManagerNamespace)
-		if err != nil {
-			if !apierrors.IsNotFound(err) {
-				return progressingConditions, fmt.Errorf("can't get namespace %q: %w", naming.ScyllaManagerNamespace, err)
-			}
-
-			err = smcrc.removeFinalizer(ctx, smcr)
-			if err != nil {
-				return progressingConditions, fmt.Errorf("can't remove finalizer: %w", err)
-			}
-
-			return progressingConditions, nil
-		}
-	}
-
-	managerClient, err := controllerhelpers.GetScyllaDBManagerClient(ctx, smcr)
+	// Finalization is deliberately fail-closed. Namespace deletion is not proof that
+	// Manager state disappeared, so even registrations carrying the legacy global label
+	// must use their configured verified mTLS client before the finalizer is removed.
+	managerClient, err := controllerhelpers.GetSecureScyllaDBManagerClient(ctx, smcrc.kubeClient, smcr)
 	if err != nil {
 		return progressingConditions, fmt.Errorf("can't get manager client: %w", err)
 	}

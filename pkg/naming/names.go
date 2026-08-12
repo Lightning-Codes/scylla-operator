@@ -316,6 +316,10 @@ func ScyllaDBManagerClusterRegistrationNameForScyllaDBCluster(sc *scyllav1alpha1
 	return scyllaDBManagerClusterRegistrationName(scyllav1alpha1.ScyllaDBClusterGVK.Kind, sc.Name)
 }
 
+func ScyllaDBManagerClusterRegistrationNameForScyllaCluster(sc *scyllav1.ScyllaCluster) (string, error) {
+	return scyllaDBManagerClusterRegistrationName(scyllav1.ScyllaClusterGVK.Kind, sc.Name)
+}
+
 func ScyllaDBManagerClusterRegistrationNameForScyllaDBManagerTask(smt *scyllav1alpha1.ScyllaDBManagerTask) (string, error) {
 	return scyllaDBManagerClusterRegistrationName(smt.Spec.ScyllaDBClusterRef.Kind, smt.Spec.ScyllaDBClusterRef.Name)
 }

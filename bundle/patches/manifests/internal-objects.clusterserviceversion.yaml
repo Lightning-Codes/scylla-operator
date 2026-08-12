@@ -7,6 +7,5 @@ metadata:
     operators.operatorframework.io/internal-objects: |
       [
         "remoteowners.scylla.scylladb.com",
-        "scylladbdatacenternodesstatusreports.scylla.scylladb.com",
-        "scylladbmanagerclusterregistrations.scylla.scylladb.com"
+        "scylladbdatacenternodesstatusreports.scylla.scylladb.com"
       ]

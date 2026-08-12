@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	scyllav1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1"
 	scyllav1alpha1 "github.com/scylladb/scylla-operator/pkg/api/scylla/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -114,6 +115,20 @@ func Test_ScyllaDBManagerClusterRegistrationNameForScyllaDBDatacenter(t *testing
 				t.Errorf("expected name: %s, got: %s", tc.expectedName, name)
 			}
 		})
+	}
+}
+
+func TestScyllaDBManagerClusterRegistrationNameForStableScyllaCluster(t *testing.T) {
+	t.Parallel()
+
+	name, err := ScyllaDBManagerClusterRegistrationNameForScyllaCluster(&scyllav1.ScyllaCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "scylladb", Namespace: "sophena"},
+	})
+	if err != nil {
+		t.Fatalf("can't calculate stable ScyllaCluster registration name: %v", err)
+	}
+	if name != "scyllacluster-scylladb-1gob8" {
+		t.Fatalf("unexpected stable ScyllaCluster registration name: %q", name)
 	}
 }
 

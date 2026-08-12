@@ -16,6 +16,7 @@ var (
 	// SchemeGroupVersion generated code relies on this name
 	// Deprecated
 	SchemeGroupVersion = GroupVersion
+	ScyllaClusterGVK   = GroupVersion.WithKind("ScyllaCluster")
 	// AddToScheme exists solely to keep the old generators creating valid code
 	// DEPRECATED
 	AddToScheme = schemeBuilder.AddToScheme

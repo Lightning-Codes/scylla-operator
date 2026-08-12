@@ -87,6 +87,10 @@ var (
 	}
 )
 
+func shouldManageScyllaServingCertificates(sdc *scyllav1alpha1.ScyllaDBDatacenter) bool {
+	return utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) || sdc.Spec.ScyllaDBManagerAgent != nil
+}
+
 func IdentityService(sdc *scyllav1alpha1.ScyllaDBDatacenter) (*corev1.Service, error) {
 	labels := cloneMapExcludingKeysOrEmpty(sdc.Labels, nonPropagatedLabelKeys)
 	maps.Copy(labels, naming.ClusterLabels(sdc))
@@ -621,16 +625,18 @@ func StatefulSetForRack(rack scyllav1alpha1.RackSpec, sdc *scyllav1alpha1.Scylla
 							},
 						}
 
-						if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
-							volumes = append(volumes, []corev1.Volume{
-								{
-									Name: scylladbServingCertsVolumeName,
-									VolumeSource: corev1.VolumeSource{
-										Secret: &corev1.SecretVolumeSource{
-											SecretName: naming.GetScyllaClusterLocalServingCertName(sdc.Name),
-										},
+						if shouldManageScyllaServingCertificates(sdc) {
+							volumes = append(volumes, corev1.Volume{
+								Name: scylladbServingCertsVolumeName,
+								VolumeSource: corev1.VolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: naming.GetScyllaClusterLocalServingCertName(sdc.Name),
 									},
 								},
+							})
+						}
+						if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
+							volumes = append(volumes, []corev1.Volume{
 								{
 									Name: scylladbClientCAVolumeName,
 									VolumeSource: corev1.VolumeSource{
@@ -1391,9 +1397,9 @@ printf '{"L":"INFO","T":"%s","M":"Ignited. Starting ScyllaDB Manager Agent"}\n' 
 
 exec scylla-manager-agent \
 -c ` + fmt.Sprintf("%q ", naming.ScyllaAgentConfigDefaultFile) + `\
--c ` + fmt.Sprintf("%q ", path.Join(naming.ScyllaManagedAgentConfigDirName, naming.ScyllaAgentConfigFileName)) + `\
 -c ` + fmt.Sprintf("%q ", path.Join(naming.ScyllaAgentConfigDirName, naming.ScyllaAgentConfigFileName)) + `\
--c ` + fmt.Sprintf("%q ", path.Join(naming.ScyllaAgentConfigDirName, naming.ScyllaAgentAuthTokenFileName)) + `
+-c ` + fmt.Sprintf("%q ", path.Join(naming.ScyllaAgentConfigDirName, naming.ScyllaAgentAuthTokenFileName)) + `\
+-c ` + fmt.Sprintf("%q ", path.Join(naming.ScyllaManagedAgentConfigDirName, naming.ScyllaAgentConfigFileName)) + `
 `),
 		},
 		Ports: []corev1.ContainerPort{
@@ -1435,6 +1441,11 @@ exec scylla-manager-agent \
 			{
 				Name:      "shared",
 				MountPath: naming.SharedDirName,
+				ReadOnly:  true,
+			},
+			{
+				Name:      scylladbServingCertsVolumeName,
+				MountPath: "/var/run/secrets/scylla-operator.scylladb.com/scylladb/serving-certs",
 				ReadOnly:  true,
 			},
 		},

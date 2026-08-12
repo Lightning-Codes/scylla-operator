@@ -314,6 +314,32 @@ func Test_ensureRackNamesInRackStatuses(t *testing.T) {
 	}
 }
 
+func TestStatefulSetInputsHashChangesWhenSharedAgentServingCertificateRotates(t *testing.T) {
+	t.Parallel()
+
+	sdc := newScyllaDBDatacenter()
+	sdc.Name = "scylladb"
+	sdc.Spec.ScyllaDBManagerAgent = &scyllav1alpha1.ScyllaDBManagerAgent{}
+	managedConfig := &corev1.ConfigMap{Data: map[string]string{"scylla.yaml": "cluster_name: sophena"}}
+	servingSecretName := naming.GetScyllaClusterLocalServingCertName(sdc.Name)
+
+	hashBefore, err := statefulSetInputsHash(sdc, managedConfig, map[string]*corev1.Secret{
+		servingSecretName: {ObjectMeta: metav1.ObjectMeta{ResourceVersion: "certificate-rv-1"}},
+	})
+	if err != nil {
+		t.Fatalf("can't hash StatefulSet inputs before certificate rotation: %v", err)
+	}
+	hashAfter, err := statefulSetInputsHash(sdc, managedConfig, map[string]*corev1.Secret{
+		servingSecretName: {ObjectMeta: metav1.ObjectMeta{ResourceVersion: "certificate-rv-2"}},
+	})
+	if err != nil {
+		t.Fatalf("can't hash StatefulSet inputs after certificate rotation: %v", err)
+	}
+	if hashBefore == hashAfter {
+		t.Fatalf("serving certificate rotation must change the StatefulSet input hash: %q", hashBefore)
+	}
+}
+
 func newScyllaDBDatacenter() *scyllav1alpha1.ScyllaDBDatacenter {
 	return &scyllav1alpha1.ScyllaDBDatacenter{
 		ObjectMeta: metav1.ObjectMeta{

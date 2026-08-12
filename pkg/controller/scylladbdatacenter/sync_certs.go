@@ -202,20 +202,17 @@ func (sdcc *Controller) syncCerts(
 	var ipAddresses []net.IP
 	var servingDNSNames []string
 
-	if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) || sdc.Spec.ScyllaDB.AlternatorOptions != nil {
+	if shouldManageScyllaServingCertificates(sdc) || sdc.Spec.ScyllaDB.AlternatorOptions != nil {
+		serviceIPAddresses, err := scyllaServingServiceIPAddresses(serviceMap)
+		if err != nil {
+			return progressingConditions, err
+		}
+		ipAddresses = append(ipAddresses, serviceIPAddresses...)
+
 		for _, svc := range serviceMap {
 			svcType := svc.Labels[naming.ScyllaServiceTypeLabel]
 			if svcType != string(naming.ScyllaServiceTypeMember) && svcType != string(naming.ScyllaServiceTypeIdentity) {
 				continue
-			}
-
-			if svc.Spec.ClusterIP != corev1.ClusterIPNone {
-				parsedIP, err := helpers.ParseIP(svc.Spec.ClusterIP)
-				if err != nil {
-					return progressingConditions, fmt.Errorf("can't parse Service %q ClusterIP %q: %w", naming.ObjRef(svc), svc.Spec.ClusterIP, err)
-				}
-
-				ipAddresses = append(ipAddresses, parsedIP)
 			}
 
 			if svc.Spec.Type == corev1.ServiceTypeLoadBalancer {
@@ -325,14 +322,19 @@ func (sdcc *Controller) syncCerts(
 			}
 		}
 
-		// Sign for every node DNS name and discovery endpoint.
-		for _, svc := range serviceMap {
-			svcType := svc.Labels[naming.ScyllaServiceTypeLabel]
-			if svcType != string(naming.ScyllaServiceTypeIdentity) && svcType != string(naming.ScyllaServiceTypeMember) {
-				return progressingConditions, fmt.Errorf("can't sign certificate for DNS name of unknown service type %q", svcType)
-			}
-			servingDNSNames = append(servingDNSNames, fmt.Sprintf("%s.%s.svc", svc.Name, svc.Namespace))
+		clusterDomain, err := sdcc.clusterDomain()
+		if err != nil {
+			return progressingConditions, fmt.Errorf("can't get Kubernetes cluster domain for serving certificate DNS names: %w", err)
 		}
+
+		// Sign one shared serving certificate for every member identity and the stable
+		// client discovery endpoint. Keep both Kubernetes' canonical short Service name
+		// and its configured-cluster-domain FQDN so callers can verify either form.
+		internalServiceDNSNames, err := scyllaServingDNSNamesForServices(serviceMap, clusterDomain)
+		if err != nil {
+			return progressingConditions, err
+		}
+		servingDNSNames = append(servingDNSNames, internalServiceDNSNames...)
 
 		// Make sure servingDNSNames are always sorted and can be reconciled in a declarative way.
 		slices.Sort(servingDNSNames)
@@ -348,7 +350,7 @@ func (sdcc *Controller) syncCerts(
 		}
 	}
 
-	if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
+	if shouldManageScyllaServingCertificates(sdc) {
 		errs = append(errs, cm.ManageCertificates(
 			ctx,
 			time.Now,
@@ -389,18 +391,21 @@ func (sdcc *Controller) syncCerts(
 			configMaps,
 		))
 
-		// Build connection bundle.
-
-		scyllaConnectionConfigSecret, err := makeScyllaConnectionConfig(sdc, secrets, configMaps, sdcc.cqlsIngressPort)
-		if err != nil {
-			errs = append(errs, err)
-		} else {
-			_, changed, err := resourceapply.ApplySecret(ctx, sdcc.kubeClient.CoreV1(), sdcc.secretLister, sdcc.eventRecorder, scyllaConnectionConfigSecret, resourceapply.ApplyOptions{})
-			if changed {
-				controllerhelpers.AddGenericProgressingStatusCondition(&progressingConditions, certControllerProgressingCondition, scyllaConnectionConfigSecret, "apply", sdc.Generation)
-			}
+		if utilfeature.DefaultMutableFeatureGate.Enabled(features.AutomaticTLSCertificates) {
+			// Build the CQL client connection bundle only when client certificates are
+			// enabled. Agent-only serving certificates intentionally do not create the
+			// local admin identity and must not depend on it.
+			scyllaConnectionConfigSecret, err := makeScyllaConnectionConfig(sdc, secrets, configMaps, sdcc.cqlsIngressPort)
 			if err != nil {
-				return progressingConditions, fmt.Errorf("can't apply secret %q: %w", naming.ObjRef(scyllaConnectionConfigSecret), err)
+				errs = append(errs, err)
+			} else {
+				_, changed, err := resourceapply.ApplySecret(ctx, sdcc.kubeClient.CoreV1(), sdcc.secretLister, sdcc.eventRecorder, scyllaConnectionConfigSecret, resourceapply.ApplyOptions{})
+				if changed {
+					controllerhelpers.AddGenericProgressingStatusCondition(&progressingConditions, certControllerProgressingCondition, scyllaConnectionConfigSecret, "apply", sdc.Generation)
+				}
+				if err != nil {
+					return progressingConditions, fmt.Errorf("can't apply secret %q: %w", naming.ObjRef(scyllaConnectionConfigSecret), err)
+				}
 			}
 		}
 	}
@@ -469,4 +474,67 @@ func (sdcc *Controller) syncCerts(
 	}
 
 	return progressingConditions, apimachineryutilerrors.NewAggregate(errs)
+}
+
+func (sdcc *Controller) clusterDomain() (string, error) {
+	soc, err := sdcc.scyllaOperatorConfigLister.Get(naming.SingletonName)
+	if err != nil {
+		return "", fmt.Errorf("can't get ScyllaOperatorConfig %q: %w", naming.SingletonName, err)
+	}
+
+	var clusterDomain string
+	if soc.Spec.ConfiguredClusterDomain != nil {
+		clusterDomain = *soc.Spec.ConfiguredClusterDomain
+	} else if soc.Status.ClusterDomain != nil {
+		clusterDomain = *soc.Status.ClusterDomain
+	}
+	clusterDomain = strings.Trim(clusterDomain, ".")
+	if len(clusterDomain) == 0 {
+		return "", fmt.Errorf("ScyllaOperatorConfig %q doesn't have a configured or discovered cluster domain", naming.SingletonName)
+	}
+
+	return clusterDomain, nil
+}
+
+func scyllaServingDNSNamesForServices(serviceMap map[string]*corev1.Service, clusterDomain string) ([]string, error) {
+	clusterDomain = strings.Trim(clusterDomain, ".")
+	if len(clusterDomain) == 0 {
+		return nil, fmt.Errorf("cluster domain must not be empty")
+	}
+
+	servingDNSNames := make([]string, 0, 2*len(serviceMap))
+	for _, svc := range serviceMap {
+		svcType := svc.Labels[naming.ScyllaServiceTypeLabel]
+		if svcType != string(naming.ScyllaServiceTypeIdentity) && svcType != string(naming.ScyllaServiceTypeMember) {
+			return nil, fmt.Errorf("can't sign certificate for DNS name of unknown service type %q", svcType)
+		}
+		shortName := fmt.Sprintf("%s.%s.svc", svc.Name, svc.Namespace)
+		servingDNSNames = append(servingDNSNames, shortName, fmt.Sprintf("%s.%s", shortName, clusterDomain))
+	}
+	slices.Sort(servingDNSNames)
+	return servingDNSNames, nil
+}
+
+func scyllaServingServiceIPAddresses(serviceMap map[string]*corev1.Service) ([]net.IP, error) {
+	var ipAddresses []net.IP
+	for _, svc := range serviceMap {
+		svcType := svc.Labels[naming.ScyllaServiceTypeLabel]
+		if svcType != string(naming.ScyllaServiceTypeIdentity) && svcType != string(naming.ScyllaServiceTypeMember) {
+			continue
+		}
+		if svc.Spec.ClusterIP == corev1.ClusterIPNone {
+			continue
+		}
+
+		parsedIP, err := helpers.ParseIP(svc.Spec.ClusterIP)
+		if err != nil {
+			return nil, fmt.Errorf("can't parse Service %q ClusterIP %q: %w", naming.ObjRef(svc), svc.Spec.ClusterIP, err)
+		}
+		ipAddresses = append(ipAddresses, parsedIP)
+	}
+
+	slices.SortStableFunc(ipAddresses, func(a, b net.IP) int {
+		return cmp.Compare(a.String(), b.String())
+	})
+	return ipAddresses, nil
 }

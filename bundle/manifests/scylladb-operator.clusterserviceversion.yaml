@@ -10,8 +10,7 @@ metadata:
     operators.operatorframework.io/internal-objects: |
       [
         "remoteowners.scylla.scylladb.com",
-        "scylladbdatacenternodesstatusreports.scylla.scylladb.com",
-        "scylladbmanagerclusterregistrations.scylla.scylladb.com"
+        "scylladbdatacenternodesstatusreports.scylla.scylladb.com"
       ]
     categories: Database,Developer Tools,Integration & Delivery
     description: Kubernetes Operator for ScyllaDB

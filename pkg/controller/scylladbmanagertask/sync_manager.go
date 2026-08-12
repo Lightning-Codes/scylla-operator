@@ -30,6 +30,7 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/util/duration"
 	hashutil "github.com/scylladb/scylla-operator/pkg/util/hash"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	apimachineryutilerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -77,9 +78,21 @@ func (smtc *Controller) syncManager(
 		return progressingConditions, nil
 	}
 
+	if !scyllaDBManagerClusterRegistrationReadyForTasks(smcr) {
+		progressingConditions = append(progressingConditions, metav1.Condition{
+			Type:               managerControllerProgressingCondition,
+			Status:             metav1.ConditionTrue,
+			ObservedGeneration: smt.Generation,
+			Reason:             "AwaitingVerifiedScyllaDBManagerClusterRegistration",
+			Message:            fmt.Sprintf("Awaiting current ManagerAPIConnectionVerified=True and DatabaseConnectionVerified=True conditions on ScyllaDBManagerClusterRegistration %q.", naming.ObjRef(smcr)),
+		})
+
+		return progressingConditions, nil
+	}
+
 	clusterID := *smcr.Status.ClusterID
 
-	managerClient, err := controllerhelpers.GetScyllaDBManagerClient(ctx, smcr)
+	managerClient, err := controllerhelpers.GetScyllaDBManagerClient(ctx, smtc.kubeClient, smcr)
 	if err != nil {
 		return progressingConditions, fmt.Errorf("can't get manager client: %w", err)
 	}
@@ -170,6 +183,20 @@ func (smtc *Controller) syncManager(
 	})
 
 	return progressingConditions, nil
+}
+
+func scyllaDBManagerClusterRegistrationReadyForTasks(smcr *scyllav1alpha1.ScyllaDBManagerClusterRegistration) bool {
+	for _, conditionType := range []string{
+		scyllav1alpha1.ScyllaDBManagerClusterRegistrationManagerAPIConnectionVerifiedCondition,
+		scyllav1alpha1.ScyllaDBManagerClusterRegistrationDatabaseConnectionVerifiedCondition,
+	} {
+		condition := apimeta.FindStatusCondition(smcr.Status.Conditions, conditionType)
+		if condition == nil || condition.Status != metav1.ConditionTrue || condition.ObservedGeneration != smcr.Generation {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (smtc *Controller) syncManagerClientTaskNotFound(

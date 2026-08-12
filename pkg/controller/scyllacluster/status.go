@@ -72,14 +72,14 @@ func (scmc *Controller) calculateStatus(
 		return migratedStatus
 	}
 
-	smcr, ok, err := getScyllaDBManagerClusterRegistration(sdc, scyllaDBManagerClusterRegistrations)
+	smcr, ok, err := getScyllaDBManagerClusterRegistration(sc, scyllaDBManagerClusterRegistrations)
 	if err != nil {
-		klog.ErrorS(err, "Can't get ScyllaDBManagerClusterRegistration for ScyllaDBDatacenter", "ScyllaCluster", klog.KObj(sc), "ScyllaDBDatacenter", klog.KObj(sdc))
+		klog.ErrorS(err, "Can't get ScyllaDBManagerClusterRegistration for ScyllaCluster", "ScyllaCluster", klog.KObj(sc))
 	}
 	if ok {
 		migratedStatus.ManagerID = smcr.Status.ClusterID
 	} else {
-		klog.V(4).InfoS("ScyllaDBManagerClusterRegistration not found for ScyllaDBDatacenter", "ScyllaCluster", klog.KObj(sc), "ScyllaDBDatacenter", klog.KObj(sdc))
+		klog.V(4).InfoS("ScyllaDBManagerClusterRegistration not found for ScyllaCluster", "ScyllaCluster", klog.KObj(sc))
 	}
 
 	migratedStatus.Backups = calculateBackupTaskStatuses(sc, scyllaDBManagerTasks)
@@ -99,8 +99,8 @@ func isOwnedByAnyFunc[T kubeinterfaces.ObjectInterface](allowedOwners []types.UI
 	}
 }
 
-func getScyllaDBManagerClusterRegistration(sdc *scyllav1alpha1.ScyllaDBDatacenter, scyllaDBManagerClusterRegistrations []*scyllav1alpha1.ScyllaDBManagerClusterRegistration) (*scyllav1alpha1.ScyllaDBManagerClusterRegistration, bool, error) {
-	smcrName, err := naming.ScyllaDBManagerClusterRegistrationNameForScyllaDBDatacenter(sdc)
+func getScyllaDBManagerClusterRegistration(sc *scyllav1.ScyllaCluster, scyllaDBManagerClusterRegistrations []*scyllav1alpha1.ScyllaDBManagerClusterRegistration) (*scyllav1alpha1.ScyllaDBManagerClusterRegistration, bool, error) {
+	smcrName, err := naming.ScyllaDBManagerClusterRegistrationNameForScyllaCluster(sc)
 	if err != nil {
 		return nil, false, fmt.Errorf("can't get ScyllaDBManagerClusterRegistration name: %w", err)
 	}

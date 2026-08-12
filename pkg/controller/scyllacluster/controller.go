@@ -614,13 +614,7 @@ func (scmc *Controller) deleteScyllaDBManagerTask(obj interface{}) {
 
 func (scmc *Controller) enqueueThroughScyllaDBManagerClusterRegistration(smcr *scyllav1alpha1.ScyllaDBManagerClusterRegistration) controllerhelpers.EnqueueFuncType {
 	return scmc.handlers.EnqueueAllFunc(scmc.handlers.EnqueueWithFilterFunc(func(sc *scyllav1.ScyllaCluster) bool {
-		sdc, err := scmc.scyllaDBDatacenterLister.ScyllaDBDatacenters(sc.Namespace).Get(sc.Name)
-		if err != nil {
-			apimachineryutilruntime.HandleError(err)
-			return false
-		}
-
-		smcrName, err := naming.ScyllaDBManagerClusterRegistrationNameForScyllaDBDatacenter(sdc)
+		smcrName, err := naming.ScyllaDBManagerClusterRegistrationNameForScyllaCluster(sc)
 		if err != nil {
 			apimachineryutilruntime.HandleError(err)
 			return false
