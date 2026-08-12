@@ -313,6 +313,60 @@ func TestScyllaServingDNSNamesIncludeStableSharedClientService(t *testing.T) {
 	}
 }
 
+func TestScyllaServingCertificateNeedsPodIPs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		exposeOptions *scyllav1alpha1.ExposeOptions
+		expected      bool
+	}{
+		{
+			name:     "default stable service broadcast",
+			expected: false,
+		},
+		{
+			name: "explicit stable service broadcast",
+			exposeOptions: &scyllav1alpha1.ExposeOptions{
+				BroadcastOptions: &scyllav1alpha1.NodeBroadcastOptions{
+					Clients: scyllav1alpha1.BroadcastOptions{Type: scyllav1alpha1.BroadcastAddressTypeServiceClusterIP},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "load balancer broadcast",
+			exposeOptions: &scyllav1alpha1.ExposeOptions{
+				BroadcastOptions: &scyllav1alpha1.NodeBroadcastOptions{
+					Clients: scyllav1alpha1.BroadcastOptions{Type: scyllav1alpha1.BroadcastAddressTypeServiceLoadBalancerIngress},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "pod IP broadcast",
+			exposeOptions: &scyllav1alpha1.ExposeOptions{
+				BroadcastOptions: &scyllav1alpha1.NodeBroadcastOptions{
+					Clients: scyllav1alpha1.BroadcastOptions{Type: scyllav1alpha1.BroadcastAddressTypePodIP},
+				},
+			},
+			expected: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			sdc := &scyllav1alpha1.ScyllaDBDatacenter{
+				Spec: scyllav1alpha1.ScyllaDBDatacenterSpec{ExposeOptions: test.exposeOptions},
+			}
+			if got := scyllaServingCertificateNeedsPodIPs(sdc); got != test.expected {
+				t.Fatalf("scyllaServingCertificateNeedsPodIPs() = %t, want %t", got, test.expected)
+			}
+		})
+	}
+}
+
 func TestAgentServingCertificateUsesConfiguredClusterDomain(t *testing.T) {
 	t.Parallel()
 

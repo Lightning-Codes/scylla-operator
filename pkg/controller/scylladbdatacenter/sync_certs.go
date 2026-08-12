@@ -246,8 +246,14 @@ func (sdcc *Controller) syncCerts(
 				}
 			}
 
-			// Only member services have associated pods
-			if svcType != string(naming.ScyllaServiceTypeMember) {
+			// Pod IPs are certificate identities only when clients are explicitly
+			// configured to use PodIP broadcast addresses. With ServiceClusterIP or
+			// LoadBalancer broadcast, the stable Service identities above are the
+			// advertised client endpoints. Including an ephemeral Pod IP in that
+			// case creates a certificate/rollout loop: a pod restart changes its IP,
+			// certificate rotation changes the StatefulSet input hash, and that rolls
+			// the pod again.
+			if svcType != string(naming.ScyllaServiceTypeMember) || !scyllaServingCertificateNeedsPodIPs(sdc) {
 				continue
 			}
 
@@ -474,6 +480,15 @@ func (sdcc *Controller) syncCerts(
 	}
 
 	return progressingConditions, apimachineryutilerrors.NewAggregate(errs)
+}
+
+func scyllaServingCertificateNeedsPodIPs(sdc *scyllav1alpha1.ScyllaDBDatacenter) bool {
+	clientsBroadcastAddressType := scyllav1alpha1.ScyllaDBDatacenterDefaultClientsBroadcastAddressType
+	if sdc.Spec.ExposeOptions != nil && sdc.Spec.ExposeOptions.BroadcastOptions != nil {
+		clientsBroadcastAddressType = sdc.Spec.ExposeOptions.BroadcastOptions.Clients.Type
+	}
+
+	return clientsBroadcastAddressType == scyllav1alpha1.BroadcastAddressTypePodIP
 }
 
 func (sdcc *Controller) clusterDomain() (string, error) {
