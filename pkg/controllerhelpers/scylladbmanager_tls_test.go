@@ -74,6 +74,9 @@ func TestNewScyllaDBManagerHTTPClientUsesVerifiedMutualTLS(t *testing.T) {
 	if tlsConfig.RootCAs == nil || len(tlsConfig.Certificates) != 1 {
 		t.Fatal("expected explicit Manager RootCAs and one mTLS client certificate")
 	}
+	if client.Timeout != scyllaDBManagerHTTPTimeout {
+		t.Fatalf("expected bounded Manager HTTP timeout %s, got %s", scyllaDBManagerHTTPTimeout, client.Timeout)
+	}
 }
 
 func TestNewScyllaDBManagerHTTPClientFailsClosedOnInvalidCA(t *testing.T) {

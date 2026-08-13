@@ -22,6 +22,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+const scyllaDBManagerHTTPTimeout = 90 * time.Second
+
 var httpDefaultTransport = http.DefaultTransport.(*http.Transport).Clone()
 
 func NewScyllaDBManagerHTTPClient(
@@ -82,10 +84,10 @@ func NewScyllaDBManagerHTTPClient(
 
 	return &http.Client{
 		Transport: transport,
-		// Limit manager calls by default to a higher bound.
-		// Individual calls can still be further limited using context.
-		// Manager is prone to extremely long calls because it (unfortunately) retries errors internally.
-		Timeout: 15 * time.Second,
+		// Secure cluster registration performs verified Agent, CQL, and Alternator
+		// handshakes synchronously. Keep this below the controller's reconciliation
+		// deadline while allowing the full verified Manager preflight to complete.
+		Timeout: scyllaDBManagerHTTPTimeout,
 	}, nil
 }
 
