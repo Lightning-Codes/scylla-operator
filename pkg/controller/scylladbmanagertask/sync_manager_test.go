@@ -318,8 +318,14 @@ func TestValidateBackupTaskCreateAndUpdateContract(t *testing.T) {
 	if !validateBackupManagerTaskMatchesDesired(observed, required) {
 		t.Fatal("exact Manager readback should match desired validation task")
 	}
+	// Manager's list endpoint flattens a singleton location array to a scalar.
+	// This normalized response is semantically identical and must converge.
+	observed.Properties.(map[string]interface{})["location"] = "s3:sophena-backups"
+	if !validateBackupManagerTaskMatchesDesired(observed, required) {
+		t.Fatal("scalar Manager location readback should match singleton desired location")
+	}
 	// Keeping a stale managed-hash label must not hide an out-of-band property change.
-	observed.Properties.(map[string]interface{})["location"] = []interface{}{"s3:drifted"}
+	observed.Properties.(map[string]interface{})["location"] = "s3:drifted"
 	if validateBackupManagerTaskMatchesDesired(observed, required) {
 		t.Fatal("strict readback must detect location drift even when the managed-hash label is unchanged")
 	}

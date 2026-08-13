@@ -848,6 +848,12 @@ func managerSchedulesEqual(observed, desired *managerclient.Schedule) bool {
 
 func stringSliceProperty(value any) ([]string, bool) {
 	switch typed := value.(type) {
+	case string:
+		// Manager normalizes a single validate_backup location to a scalar in
+		// task-list responses even though create/update accepts a string slice.
+		// Compare the two wire representations canonically so reconciliation
+		// converges instead of issuing an update on every safety requeue.
+		return []string{typed}, true
 	case []string:
 		return slices.Clone(typed), true
 	case []interface{}:
