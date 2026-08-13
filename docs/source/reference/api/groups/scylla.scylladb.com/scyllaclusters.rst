@@ -32,7 +32,7 @@ Specification
      - Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
    * - :ref:`metadata<api-scylla.scylladb.com-scyllaclusters-v1-.metadata>`
      - object
-     - 
+     -
    * - :ref:`spec<api-scylla.scylladb.com-scyllaclusters-v1-.spec>`
      - object
      - spec defines the desired state of this scylla cluster.
@@ -382,6 +382,9 @@ object
    * - Property
      - Type
      - Description
+   * - :ref:`agentEnv<api-scylla.scylladb.com-scyllaclusters-v1-.spec.datacenter.racks[].agentEnv[]>`
+     - array (object)
+     - agentEnv specifies environment variables added to the ScyllaDB Manager Agent container.
    * - :ref:`agentResources<api-scylla.scylladb.com-scyllaclusters-v1-.spec.datacenter.racks[].agentResources>`
      - object
      - agentResources specify the resources for the Agent container.
@@ -418,6 +421,229 @@ object
    * - :ref:`volumes<api-scylla.scylladb.com-scyllaclusters-v1-.spec.datacenter.racks[].volumes[]>`
      - array (object)
      - Volumes added to Scylla Pod.
+
+.. _api-scylla.scylladb.com-scyllaclusters-v1-.spec.datacenter.racks[].agentEnv[]:
+
+.spec.datacenter.racks[].agentEnv[]
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+EnvVar represents an environment variable present in a Container.
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - name
+     - string
+     - Name of the environment variable. May consist of any printable ASCII characters except '='.
+   * - value
+     - string
+     - Variable references $(VAR_NAME) are expanded using the previously defined environment variables in the container and any service environment variables. If a variable cannot be resolved, the reference in the input string will be unchanged. Double $$ are reduced to a single $, which allows for escaping the $(VAR_NAME) syntax: i.e. "$$(VAR_NAME)" will produce the string literal "$(VAR_NAME)". Escaped references will never be expanded, regardless of whether the variable exists or not. Defaults to "".
+   * - :ref:`valueFrom<api-scylla.scylladb.com-scyllaclusters-v1-.spec.datacenter.racks[].agentEnv[].valueFrom>`
+     - object
+     - Source for the environment variable's value. Cannot be used if value is not empty.
+
+.. _api-scylla.scylladb.com-scyllaclusters-v1-.spec.datacenter.racks[].agentEnv[].valueFrom:
+
+.spec.datacenter.racks[].agentEnv[].valueFrom
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+Source for the environment variable's value. Cannot be used if value is not empty.
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - :ref:`configMapKeyRef<api-scylla.scylladb.com-scyllaclusters-v1-.spec.datacenter.racks[].agentEnv[].valueFrom.configMapKeyRef>`
+     - object
+     - Selects a key of a ConfigMap.
+   * - :ref:`fieldRef<api-scylla.scylladb.com-scyllaclusters-v1-.spec.datacenter.racks[].agentEnv[].valueFrom.fieldRef>`
+     - object
+     - Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`, spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.
+   * - :ref:`fileKeyRef<api-scylla.scylladb.com-scyllaclusters-v1-.spec.datacenter.racks[].agentEnv[].valueFrom.fileKeyRef>`
+     - object
+     - FileKeyRef selects a key of the env file. Requires the EnvFiles feature gate to be enabled.
+   * - :ref:`resourceFieldRef<api-scylla.scylladb.com-scyllaclusters-v1-.spec.datacenter.racks[].agentEnv[].valueFrom.resourceFieldRef>`
+     - object
+     - Selects a resource of the container: only resources limits and requests (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.
+   * - :ref:`secretKeyRef<api-scylla.scylladb.com-scyllaclusters-v1-.spec.datacenter.racks[].agentEnv[].valueFrom.secretKeyRef>`
+     - object
+     - Selects a key of a secret in the pod's namespace
+
+.. _api-scylla.scylladb.com-scyllaclusters-v1-.spec.datacenter.racks[].agentEnv[].valueFrom.configMapKeyRef:
+
+.spec.datacenter.racks[].agentEnv[].valueFrom.configMapKeyRef
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+Selects a key of a ConfigMap.
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - key
+     - string
+     - The key to select.
+   * - name
+     - string
+     - Name of the referent. This field is effectively required, but due to backwards compatibility is allowed to be empty. Instances of this type with an empty value here are almost certainly wrong. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+   * - optional
+     - boolean
+     - Specify whether the ConfigMap or its key must be defined
+
+.. _api-scylla.scylladb.com-scyllaclusters-v1-.spec.datacenter.racks[].agentEnv[].valueFrom.fieldRef:
+
+.spec.datacenter.racks[].agentEnv[].valueFrom.fieldRef
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`, spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - apiVersion
+     - string
+     - Version of the schema the FieldPath is written in terms of, defaults to "v1".
+   * - fieldPath
+     - string
+     - Path of the field to select in the specified API version.
+
+.. _api-scylla.scylladb.com-scyllaclusters-v1-.spec.datacenter.racks[].agentEnv[].valueFrom.fileKeyRef:
+
+.spec.datacenter.racks[].agentEnv[].valueFrom.fileKeyRef
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+FileKeyRef selects a key of the env file. Requires the EnvFiles feature gate to be enabled.
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - key
+     - string
+     - The key within the env file. An invalid key will prevent the pod from starting. The keys defined within a source may consist of any printable ASCII characters except '='. During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+   * - optional
+     - boolean
+     - Specify whether the file or its key must be defined. If the file or key does not exist, then the env var is not published. If optional is set to true and the specified key does not exist, the environment variable will not be set in the Pod's containers.  If optional is set to false and the specified key does not exist, an error will be returned during Pod creation.
+   * - path
+     - string
+     - The path within the volume from which to select the file. Must be relative and may not contain the '..' path or start with '..'.
+   * - volumeName
+     - string
+     - The name of the volume mount containing the env file.
+
+.. _api-scylla.scylladb.com-scyllaclusters-v1-.spec.datacenter.racks[].agentEnv[].valueFrom.resourceFieldRef:
+
+.spec.datacenter.racks[].agentEnv[].valueFrom.resourceFieldRef
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+Selects a resource of the container: only resources limits and requests (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - containerName
+     - string
+     - Container name: required for volumes, optional for env vars
+   * - divisor
+     -
+     - Specifies the output format of the exposed resources, defaults to "1"
+   * - resource
+     - string
+     - Required: resource to select
+
+.. _api-scylla.scylladb.com-scyllaclusters-v1-.spec.datacenter.racks[].agentEnv[].valueFrom.secretKeyRef:
+
+.spec.datacenter.racks[].agentEnv[].valueFrom.secretKeyRef
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Description
+"""""""""""
+Selects a key of a secret in the pod's namespace
+
+Type
+""""
+object
+
+
+.. list-table::
+   :widths: 25 10 150
+   :header-rows: 1
+
+   * - Property
+     - Type
+     - Description
+   * - key
+     - string
+     - The key of the secret to select from.  Must be a valid secret key.
+   * - name
+     - string
+     - Name of the referent. This field is effectively required, but due to backwards compatibility is allowed to be empty. Instances of this type with an empty value here are almost certainly wrong. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+   * - optional
+     - boolean
+     - Specify whether the Secret or its key must be defined
 
 .. _api-scylla.scylladb.com-scyllaclusters-v1-.spec.datacenter.racks[].agentResources:
 
@@ -2635,7 +2861,7 @@ object
      - string
      - Container name: required for volumes, optional for env vars
    * - divisor
-     - 
+     -
      - Specifies the output format of the exposed resources, defaults to "1"
    * - resource
      - string
@@ -2666,7 +2892,7 @@ object
      - string
      - medium represents what type of storage medium should back this directory. The default is "" which means to use the node's default medium. Must be an empty string (default) or Memory. More info: https://kubernetes.io/docs/concepts/storage/volumes#emptydir
    * - sizeLimit
-     - 
+     -
      - sizeLimit is the total amount of local storage required for this EmptyDir volume. The size limit is also applicable for memory medium. The maximum usage on memory medium EmptyDir would be the minimum value between the SizeLimit specified here and the sum of memory limits of all containers in a pod. The default is nil which means that the limit is undefined. More info: https://kubernetes.io/docs/concepts/storage/volumes#emptydir
 
 .. _api-scylla.scylladb.com-scyllaclusters-v1-.spec.datacenter.racks[].volumes[].ephemeral:
@@ -3822,7 +4048,7 @@ object
      - string
      - Container name: required for volumes, optional for env vars
    * - divisor
-     - 
+     -
      - Specifies the output format of the exposed resources, defaults to "1"
    * - resource
      - string

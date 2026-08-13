@@ -183,6 +183,12 @@ type ScyllaDBManagerAgentTemplate struct {
 
 	// volumeMounts specify a list of volume mounts appended to ScyllaDB Manager Agent container.
 	VolumeMounts []corev1.VolumeMount `json:"volumeMounts,omitempty"`
+
+	// env specifies environment variables appended to the ScyllaDB Manager Agent container.
+	// +optional
+	// +listType=map
+	// +listMapKey=name
+	Env []corev1.EnvVar `json:"env,omitempty"`
 }
 
 // RackSpec is the desired state for a ScyllaDB Rack.

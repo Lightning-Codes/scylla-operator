@@ -541,6 +541,12 @@ type RackSpec struct {
 	// AgentVolumeMounts to be added to Agent container.
 	AgentVolumeMounts []corev1.VolumeMount `json:"agentVolumeMounts,omitempty" patchStrategy:"merge" patchMergeKey:"mountPath"`
 
+	// agentEnv specifies environment variables added to the ScyllaDB Manager Agent container.
+	// +optional
+	// +listType=map
+	// +listMapKey=name
+	AgentEnv []corev1.EnvVar `json:"agentEnv,omitempty" patchStrategy:"merge" patchMergeKey:"name"`
+
 	// Scylla config map name to customize scylla.yaml
 	ScyllaConfig string `json:"scyllaConfig"`
 

@@ -1461,6 +1461,9 @@ exec scylla-manager-agent \
 		for _, vm := range r.ScyllaDBManagerAgent.VolumeMounts {
 			cnt.VolumeMounts = append(cnt.VolumeMounts, *vm.DeepCopy())
 		}
+		for _, env := range r.ScyllaDBManagerAgent.Env {
+			cnt.Env = append(cnt.Env, *env.DeepCopy())
+		}
 	}
 
 	return cnt, nil

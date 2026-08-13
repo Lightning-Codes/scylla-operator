@@ -569,6 +569,13 @@ func (in *RackSpec) DeepCopyInto(out *RackSpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.AgentEnv != nil {
+		in, out := &in.AgentEnv, &out.AgentEnv
+		*out = make([]corev1.EnvVar, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	if in.ExposeOptions != nil {
 		in, out := &in.ExposeOptions, &out.ExposeOptions
 		*out = new(RackExposeOptions)

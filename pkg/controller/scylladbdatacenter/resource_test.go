@@ -642,6 +642,47 @@ func TestMemberService(t *testing.T) {
 	}
 }
 
+func TestGetScyllaDBManagerAgentContainerAppendsRackEnvironment(t *testing.T) {
+	t.Parallel()
+
+	const credentialsPath = "/var/run/secrets/scylla-manager-agent/s3/credentials"
+
+	rack := scyllav1alpha1.RackSpec{
+		RackTemplate: scyllav1alpha1.RackTemplate{
+			ScyllaDBManagerAgent: &scyllav1alpha1.ScyllaDBManagerAgentTemplate{
+				Env: []corev1.EnvVar{
+					{
+						Name:  "AWS_SHARED_CREDENTIALS_FILE",
+						Value: credentialsPath,
+					},
+				},
+			},
+		},
+	}
+	sdc := &scyllav1alpha1.ScyllaDBDatacenter{
+		Spec: scyllav1alpha1.ScyllaDBDatacenterSpec{
+			ScyllaDBManagerAgent: &scyllav1alpha1.ScyllaDBManagerAgent{
+				Image: pointer.Ptr("scylladb/scylla-manager-agent:latest"),
+			},
+		},
+	}
+
+	got, err := getScyllaDBManagerAgentContainer(rack, sdc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected := []corev1.EnvVar{
+		{
+			Name:  "AWS_SHARED_CREDENTIALS_FILE",
+			Value: credentialsPath,
+		},
+	}
+	if !apiequality.Semantic.DeepEqual(got.Env, expected) {
+		t.Errorf("expected and actual Manager Agent environment differs: %s", cmp.Diff(expected, got.Env))
+	}
+}
+
 func runTestStatefulSetForRack(t *testing.T) {
 	logEnabledFeatures(t)
 

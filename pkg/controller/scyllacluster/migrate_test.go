@@ -517,6 +517,12 @@ func newBasicScyllaCluster() *scyllav1.ScyllaCluster {
 								MountPath: "/var/foo/bar",
 							},
 						},
+						AgentEnv: []corev1.EnvVar{
+							{
+								Name:  "AWS_SHARED_CREDENTIALS_FILE",
+								Value: "/var/run/secrets/scylla-manager-agent/s3/credentials",
+							},
+						},
 						ScyllaConfig:      "custom-scylla-config-map",
 						ScyllaAgentConfig: "custom-agent-secret",
 					},
@@ -842,6 +848,12 @@ func newBasicScyllaDBManagerAgentTemplate() scyllav1alpha1.ScyllaDBManagerAgentT
 				Name:      "custom-agent-secret-volume-name",
 				ReadOnly:  true,
 				MountPath: "/var/foo/bar",
+			},
+		},
+		Env: []corev1.EnvVar{
+			{
+				Name:  "AWS_SHARED_CREDENTIALS_FILE",
+				Value: "/var/run/secrets/scylla-manager-agent/s3/credentials",
 			},
 		},
 	}

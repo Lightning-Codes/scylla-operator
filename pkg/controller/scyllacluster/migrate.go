@@ -244,6 +244,7 @@ func MigrateV1ScyllaClusterSpecToV1Alpha1ScyllaDBDatacenterSpec(scName string, s
 								})
 							}),
 							VolumeMounts: rack.AgentVolumeMounts,
+							Env:          rack.AgentEnv,
 						},
 						ExposeOptions: func() *scyllav1alpha1.RackExposeOptions {
 							if rack.ExposeOptions == nil {
