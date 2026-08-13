@@ -15,7 +15,6 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/controllertools"
 	"github.com/scylladb/scylla-operator/pkg/kubeinterfaces"
-	"github.com/scylladb/scylla-operator/pkg/naming"
 	"github.com/scylladb/scylla-operator/pkg/scheme"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -252,12 +251,6 @@ func (smtc *Controller) deleteScyllaDBManagerClusterRegistration(obj interface{}
 
 func (smtc *Controller) enqueueThroughScyllaDBManagerClusterRegistration(smcr *scyllav1alpha1.ScyllaDBManagerClusterRegistration) controllerhelpers.EnqueueFuncType {
 	return smtc.handlers.EnqueueAllFunc(smtc.handlers.EnqueueWithFilterFunc(func(smt *scyllav1alpha1.ScyllaDBManagerTask) bool {
-		smcrName, err := naming.ScyllaDBManagerClusterRegistrationNameForScyllaDBManagerTask(smt)
-		if err != nil {
-			apimachineryutilruntime.HandleError(err)
-			return false
-		}
-
-		return smcr.Name == smcrName
+		return smt.Namespace == smcr.Namespace && smt.Spec.ScyllaDBClusterRef == smcr.Spec.ScyllaDBClusterRef
 	}))
 }

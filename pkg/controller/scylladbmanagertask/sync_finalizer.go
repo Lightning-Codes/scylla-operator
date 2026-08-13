@@ -12,7 +12,6 @@ import (
 	"github.com/scylladb/scylla-operator/pkg/controllerhelpers"
 	"github.com/scylladb/scylla-operator/pkg/helpers/managerclienterrors"
 	"github.com/scylladb/scylla-operator/pkg/naming"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -29,18 +28,12 @@ func (smtc *Controller) syncFinalizer(ctx context.Context, smt *scyllav1alpha1.S
 
 	klog.V(4).InfoS("Finalizing object", "ScyllaDBManagerTask", klog.KObj(smt), "UID", smt.UID)
 
-	smcrName, err := naming.ScyllaDBManagerClusterRegistrationNameForScyllaDBManagerTask(smt)
+	smcr, expectedSMCRName, err := smtc.scyllaDBManagerClusterRegistrationForTask(smt)
 	if err != nil {
-		return progressingConditions, fmt.Errorf("can't get ScyllaDBManagerClusterRegistration name: %w", err)
+		return progressingConditions, err
 	}
-
-	smcr, err := smtc.scyllaDBManagerClusterRegistrationLister.ScyllaDBManagerClusterRegistrations(smt.Namespace).Get(smcrName)
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return progressingConditions, fmt.Errorf("can't get ScyllaDBManagerClusterRegistration: %w", err)
-		}
-
-		klog.V(4).InfoS("ScyllaDBManagerClusterRegistration referenced by ScyllaDBManagerTask does not exist, removing finalizer.", "ScyllaDBManagerTask", klog.KObj(smt), "UID", smt.UID, "ScyllaDBManagerClusterRegistration", klog.KRef(smt.Namespace, smcrName))
+	if smcr == nil {
+		klog.V(4).InfoS("ScyllaDBManagerClusterRegistration referenced by ScyllaDBManagerTask does not exist, removing finalizer.", "ScyllaDBManagerTask", klog.KObj(smt), "UID", smt.UID, "ScyllaDBManagerClusterRegistration", klog.KRef(smt.Namespace, expectedSMCRName))
 
 		err = smtc.removeFinalizer(ctx, smt)
 		if err != nil {
@@ -56,7 +49,7 @@ func (smtc *Controller) syncFinalizer(ctx context.Context, smt *scyllav1alpha1.S
 			Status:             metav1.ConditionTrue,
 			ObservedGeneration: smt.Generation,
 			Reason:             "AwaitingScyllaDBManagerClusterRegistrationClusterIDPropagation",
-			Message:            fmt.Sprintf("Awaiting the ScyllaDB Manager's cluster ID to be propagated to the status of ScyllaDBManagerClusterRegistration: %q.", naming.ManualRef(smt.Namespace, smcrName)),
+			Message:            fmt.Sprintf("Awaiting the ScyllaDB Manager's cluster ID to be propagated to the status of ScyllaDBManagerClusterRegistration: %q.", naming.ObjRef(smcr)),
 		})
 
 		return progressingConditions, nil
