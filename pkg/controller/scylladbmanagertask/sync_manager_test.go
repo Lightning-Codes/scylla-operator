@@ -324,6 +324,20 @@ func TestValidateBackupTaskCreateAndUpdateContract(t *testing.T) {
 	if !validateBackupManagerTaskMatchesDesired(observed, required) {
 		t.Fatal("scalar Manager location readback should match singleton desired location")
 	}
+	// Manager's list endpoint also serializes the internal cron expression as
+	// a JSON wrapper. It is semantically identical to the desired plain cron
+	// and must not trigger an update every safety resync.
+	observedSchedule := *observed.Schedule
+	observed.Schedule = &observedSchedule
+	observed.Schedule.Cron = `{"spec":"0 3 * * SUN","start_date":"2026-08-13T08:00:00Z"}`
+	if !validateBackupManagerTaskMatchesDesired(observed, required) {
+		t.Fatal("Manager cron wire wrapper should match the desired plain cron")
+	}
+	observed.Schedule.Cron = `{"spec":"0 4 * * SUN","start_date":"2026-08-13T08:00:00Z"}`
+	if validateBackupManagerTaskMatchesDesired(observed, required) {
+		t.Fatal("different cron spec in Manager wire wrapper must be detected")
+	}
+	observed.Schedule.Cron = required.Schedule.Cron
 	// Keeping a stale managed-hash label must not hide an out-of-band property change.
 	observed.Properties.(map[string]interface{})["location"] = "s3:drifted"
 	if validateBackupManagerTaskMatchesDesired(observed, required) {

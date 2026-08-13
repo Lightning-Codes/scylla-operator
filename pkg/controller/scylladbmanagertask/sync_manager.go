@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"maps"
 	"math"
 	"regexp"
@@ -832,7 +833,9 @@ func managerSchedulesEqual(observed, desired *managerclient.Schedule) bool {
 	if observed == nil || desired == nil {
 		return observed == nil && desired == nil
 	}
-	if observed.Cron != desired.Cron || observed.Interval != desired.Interval || observed.NumRetries != desired.NumRetries || observed.RetryWait != desired.RetryWait || observed.Timezone != desired.Timezone || !slices.Equal(observed.Window, desired.Window) {
+	observedCron, observedCronOK := canonicalManagerCron(observed.Cron)
+	desiredCron, desiredCronOK := canonicalManagerCron(desired.Cron)
+	if !observedCronOK || !desiredCronOK || observedCron != desiredCron || observed.Interval != desired.Interval || observed.NumRetries != desired.NumRetries || observed.RetryWait != desired.RetryWait || observed.Timezone != desired.Timezone || !slices.Equal(observed.Window, desired.Window) {
 		return false
 	}
 	if desired.StartDate == nil {
@@ -844,6 +847,31 @@ func managerSchedulesEqual(observed, desired *managerclient.Schedule) bool {
 	}
 
 	return time.Time(*observed.StartDate).Equal(time.Time(*desired.StartDate))
+}
+
+func canonicalManagerCron(value string) (string, bool) {
+	trimmed := strings.TrimSpace(value)
+	if !strings.HasPrefix(trimmed, "{") {
+		return trimmed, true
+	}
+
+	// Manager's task-list API serializes its internal cron value as a JSON
+	// object even though create/update accepts a plain cron string. Treat the
+	// wire wrapper as a representation detail while rejecting malformed or
+	// unknown JSON instead of allowing it to mask schedule drift.
+	var wire struct {
+		Spec      string `json:"spec"`
+		StartDate string `json:"start_date"`
+	}
+	decoder := json.NewDecoder(strings.NewReader(trimmed))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&wire); err != nil || strings.TrimSpace(wire.Spec) == "" {
+		return "", false
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return "", false
+	}
+	return wire.Spec, true
 }
 
 func stringSliceProperty(value any) ([]string, bool) {
